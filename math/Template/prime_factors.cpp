@@ -8,11 +8,13 @@
 #include <map>
 using namespace std;
 struct Prime {
-    int _maxn, _sn;
+    typedef long long T;
+    T _maxn;
+    int _sn;
     vector<int> _vis;
     vector<int> _prime;
-    Prime(int maxn):_maxn(maxn) {
-        _sn = (int) sqrt(_maxn) + 5;
+    Prime(T maxn):_maxn(maxn) {
+        _sn = (int) sqrt((double) _maxn) + 5;
         _vis.assign(_sn, 0);
         init_prime();
     }
@@ -25,11 +27,12 @@ struct Prime {
             }
         }
     }
-    void divide(int x, vector<int> & factor, vector<int> & cnt) {
+    void divide(T x, vector<T> & factor, vector<int> & cnt) {
         factor.clear();
         cnt.clear();
         int n = 0;
-        for (int i = 0, tp = 0, np=_prime.size(); i<np && (tp=_prime[i])*(_prime[i]) <= x; ++i) if(x%tp == 0) {
+        T tp;
+        for (int i = 0, np=_prime.size(); i<np && (tp=_prime[i], tp*tp) <= x; ++i) if(x%tp == 0) {
                 factor.push_back(tp);
                 n = 0;
                 while(x % tp == 0) ++n, x/=tp;
@@ -40,13 +43,29 @@ struct Prime {
             cnt.push_back(1);
         }
     }
-    void divide(int x, map<int,int> & mmp, int k=1) {
-        vector<int> factor, cnt;
+    void divide(T x, T factor[], int cnt[], int & len) {
+        len = 0;
+        int n = 0;
+        T tp;
+        for (int i = 0, np=_prime.size(); i<np && (tp=_prime[i], tp*tp) <= x; ++i) if(x%tp == 0) {
+                factor[len] = tp;
+                n = 0;
+                while(x % tp == 0) ++n, x/=tp;
+                cnt[len++] = n;
+            }
+        if(x != 1) {
+            factor[len] = x;
+            cnt[len++] = 1;
+        }
+    }
+    void divide(T x, map<T,int> & mmp, int k=1) {
+        vector<T> factor;
+        vector<int> cnt;
         divide(x, factor, cnt);
         divide(factor, cnt, mmp, k);
     }
-    void divide(vector<int> & factor, vector<int> & cnt, map<int,int> & mmp, int k=1) {
-        map<int,int>::iterator it;
+    void divide(vector<T> & factor, vector<int> & cnt, map<T,int> & mmp, int k=1) {
+        map<T,int>::iterator it;
         for (int i = 0, l=factor.size(); i<l; ++i) {
             it = mmp.find(factor[i]);
             if (it != mmp.end()) {
@@ -55,38 +74,67 @@ struct Prime {
                 mmp.insert(make_pair(factor[i], k*cnt[i]));
         }
     }
-} prime(1000000000);
+} prime(10000000000ll);
+struct FactorDFS{
+    const int N = 105;
+    ll factor[N];
+    int cnt[N], len;
+    void dfs(int pos, ll val) {
+        if (pos == len) {
+                // fuck something
+            return;
+        }
+        for (int i = 0; i<= cnt[pos]; ++i) {
+            dfs(pos+1, val);
+            val *= factor[pos];
+        }
+    }
+};
 int main() {
-    vector<int> f, c;
-    map<int,int> mmp;
-    int a = 100224546;
+    typedef long long T;
+    vector<T> f;
+    vector<int> c;
+    map<T,int> mmp;
+    T a = 100224546;
     prime.divide(a, f, c);
-    int sum = 1;
-    for (int i = 0; i< f.size(); ++i) {
-        printf("factor : %d, count : %d\n", f[i], c[i]);
+    T sum = 1;
+    for (int i = 0; i< (int)f.size(); ++i) {
+        cout<<"factor : "<<f[i]<<", count : "<<c[i]<<endl;
         for (int j = 0; j< c[i]; ++j) {
             sum *= f[i];
         }
     }
-    printf("origin : %d , result : %d\n\n", a, sum);
+    cout<<"origin : "<<a<<" , result : "<<sum<<endl<<endl;
     prime.divide(a, mmp);
     sum = 1;
-    for (map<int,int>::iterator it = mmp.begin(); it != mmp.end(); ++it) {
-        printf("factor : %d, count : %d\n", it->first, it->second);
+    for (map<T,int>::iterator it = mmp.begin(); it != mmp.end(); ++it) {
+        cout<<"factor : "<<it->first<<", count : "<<it->second<<endl;
         for (int j = 0; j< it->second; ++j) {
             sum *= it->first;
         }
     }
-    printf("origin : %d , result : %d\n\n", a, sum);
+    cout<<"origin : "<<a<<" , result : "<<sum<<endl<<endl;
     a /= 6;
     prime.divide(6, mmp, -1);
     sum = 1;
-    for (map<int,int>::iterator it = mmp.begin(); it != mmp.end(); ++it) {
-        printf("factor : %d, count : %d\n", it->first, it->second);
+    for (map<T,int>::iterator it = mmp.begin(); it != mmp.end(); ++it) {
+        cout<<"factor : "<<it->first<<", count : "<<it->second<<endl;
         for (int j = 0; j< it->second; ++j) {
             sum *= it->first;
         }
     }
-    printf("origin : %d , result : %d\n\n", a, sum);
+    cout<<"origin : "<<a<<" , result : "<<sum<<endl<<endl;
+
+    a = 1;
+    for (int i = 0; i< prime._sn && a < 1e10; a*=prime._prime[i++]);
+    prime.divide(a, f, c);
+    sum = 1;
+    for (int i = 0; i< (int)f.size(); ++i) {
+        cout<<"factor : "<<f[i]<<", count : "<<c[i]<<endl;
+        for (int j = 0; j< c[i]; ++j) {
+            sum *= f[i];
+        }
+    }
+    cout<<"origin : "<<a<<" , result : "<<sum<<endl<<endl;
     return 0;
 }
