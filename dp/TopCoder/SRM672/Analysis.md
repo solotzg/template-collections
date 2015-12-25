@@ -19,3 +19,18 @@
 #### Disconnected even degree graphs
 * Assume that there is n vertices, v0 and other n-1 ones, and x of n-1 vertices and v0 form a connected graph. So there are d(n) = Comb(n-1,x)\*p(x+1)\*2^((n-1-x)\*(n-2-x)/2) ways to make up disconnected even degree graphs.
 * p(n) = e(n) - d(n)
+
+### Tdetective
+* it's hard to explain in English, so Chinese
+
+#### 题意
+* n个嫌疑犯，编号为0～n-1，其中一个为杀人犯，每个嫌犯有对所有嫌犯嫌疑等级的评定（0~9），编号为0的是首要嫌犯。
+* 1个侦探，和嫌疑犯谈话即可判断其是否为杀人犯，如果非杀人犯，则可从其口中得知的信息更新嫌疑等级（最大值），否则停止
+* 求出当k为杀人犯时，最少需要多少次谈话
+
+####
+* 可以模拟一下，最先调查0，然后更新嫌疑等级，再挑等级最大的进行下一次调查，如此循环。
+* 所以有个很trick的办法，从9到0枚举等级，利用并查集把连续调查的人添加到同一集合之中。为什么要从9到0枚举？因为高等级的总是会被优先调查。
+* 设当前枚举的等级为i，维护一个数组r(c,b)表示调查过c后，调查b需要的次数。
+* 对于任意a、b，如果s(a,b)==i但a和b不再同一个集合中（两者互评没有更高的优先级），再枚举c，满足a和c在同一集合中，那么就可以更新r(c,b)=min(r(c,b),o(find(c)))
+* ......
