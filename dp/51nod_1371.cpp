@@ -30,8 +30,8 @@ struct Main {
     }
     void init() {
         rp(i,N) {
-            comb[i][0] = 1;
-            repd(j, 1, i) {
+            comb[i][0] = comb[i][i] = 1;
+            rep(j, 1, i) {
                 comb[i][j] = add(comb[i-1][j-1], comb[i-1][j]);
             }
         }
