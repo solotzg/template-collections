@@ -2,6 +2,7 @@
 #include<algorithm>
 #include<string.h>
 #include<math.h>
+#include<assert.h>
 using namespace std;
 const double eps = 1e-8;
 const double PI = acos(-1.0);
@@ -13,22 +14,26 @@ int sgn(double x) {
 struct Point {
     double x,y;
     Point() {}
-    Point(double _x,double _y) {
+    Point(double _x, double _y) {
         x = _x;
         y = _y;
     }
-    Point operator -(const Point &b)const {
+    Point operator - (const Point &b)const {
         return Point(x - b.x,y - b.y);
     }
 //叉积
-    double operator ^(const Point &b)const {
+    double operator ^ (const Point &b)const {
         return x*b.y - y*b.x;
     }
 //点积
-    double operator *(const Point &b)const {
+    double operator * (const Point &b)const {
         return x*b.x + y*b.y;
     }
+    bool operator == (const Point & b) const {
+        return sgn(x-b.x)==0 && sgn(y-b.y)==0;
+    }
 };
+
 struct Line {
     Point s;
     Point e;
@@ -36,28 +41,32 @@ struct Line {
     Line(Point _s, Point _e) {
         s = _s;
         e = _e;
-    }
-//两直线相交求交点
-//第一个值为0表示直线重合,为1表示平行,为0表示相交,为2是相交
-//只有第一个值为2时,交点才有意义
-    pair<int,Point> operator &(const Line &b)const {
-        Point res = s;
-        if(sgn((s-e)^(b.s-b.e)) == 0) {
-            if(sgn((s-b.e)^(b.s-b.e)) == 0)
-                return make_pair(0,res);//重合
-            else return make_pair(1,res);//平行
-        }
-        double t = ((s-b.s)^(b.s-b.e))/((s-e)^(b.s-b.e));
-        res.x += (e.x-s.x)*t;
-        res.y += (e.y-s.y)*t;
-        return make_pair(2,res);
+        assert(!(s == e));
     }
 };
-//通过两点,确定直线方程
-void Get_equation(Point p1,Point p2,double &a,double &b,double &c) {
-    a = p2.y - p1.y;
-    b = p1.x - p2.x;
-    c = p2.x*p1.y - p1.x*p2.y;
+// 返回直线 Ax + By + C =0 的系数
+void Coefficient(const Line & L, double & A, double & B, double & C) {
+    A = L.e.y - L.s.y;
+    B = L.s.x - L.e.x;
+    C = L.e.x * L.s.y - L.s.x * L.e.y;
+}
+//两直线相交求交点
+//第一个值为0表示直线重合,为1表示平行,为2是相交
+//只有第一个值为2时,交点才有意义
+pair<int,Point> Intersection(const Line & A, const Line & B) {
+    double A1, B1, C1;
+    double A2, B2, C2;
+    Coefficient(A, A1, B1, C1);
+    Coefficient(B, A2, B2, C2);
+    Point I(0, 0);
+    if (sgn(A1 * B2 - A2 * B1) == 0) {
+        if (sgn(A1 * C2 - A2 * C1)==0 && sgn(B1 * C2 - B2 * C1)==0)
+            return make_pair(0, I);
+        return make_pair(1, I);
+    }
+    I.x = - (B2 * C1 - B1 * C2) / (A1 * B2 - A2 * B1);
+    I.y = (A2 * C1 - A1 * C2) / (A1 * B2 - A2 * B1);
+    return make_pair(2, I);
 }
 // 绕原点逆时针旋转角度B(弧度值)
 Point rotate(Point A, double rad) {
@@ -83,11 +92,12 @@ bool Seg_inter_line(Line l1,Line l2) { //判断直线l1和线段l2是否相交
 }
 //点到直线距离
 //返回为result,是点到直线最近的点
-double PointToLine(Point P,Line L,Point & result) {
-    double t = ((P-L.s)*(L.e-L.s))/((L.e-L.s)*(L.e-L.s));
-    result.x = L.s.x + (L.e.x-L.s.x)*t;
-    result.y = L.s.y + (L.e.y-L.s.y)*t;
-    return t;
+double PointToLine(Point P,Line L,Point & res) {
+    double d = dist(L.s, L.e);
+    double s = ((L.s-P)^(L.e-P))/d;
+    res.x = P.x + s*(L.e.y-L.s.y)/d;
+    res.y = P.y - s*(L.e.x-L.s.x)/d;
+    return abs(s);
 }
 //点到线段的距离
 //返回点到线段最近的点
@@ -116,8 +126,8 @@ double CalcArea(Point p[],int n) {
 bool OnSeg(Point P,Line L) {
     return
         sgn((L.s-P)^(L.e-P)) == 0 &&
-        sgn((P.x - L.s.x) * (P.x - L.e.x)) <= 0 &&
-        sgn((P.y - L.s.y) * (P.y - L.e.y)) <= 0;
+        (((P.x - L.s.x) * (P.x - L.e.x) < 0)  ||
+         ((P.y - L.s.y) * (P.y - L.e.y) < 0));
 }
 //*判断点在凸多边形内
 //点形成一个凸包,而且按逆时针排序(如果是顺时针把里面的<0改为>0)
@@ -192,9 +202,6 @@ bool _cmp(Point p1,Point p2) {
         return true;
     else return false;
 }
-/*
-    凸包边上无点：<=    凸包边上有点：<
-*/
 void Graham(int n) {
     Point p0;
     int k = 0;
@@ -226,6 +233,9 @@ void Graham(int n) {
         while(top > 1 &&
                 sgn((list[Stack[top-1]]-list[Stack[top-2]])^(list[i]-list[Stack[top-2]])) <=
                 0)top--;
+        /*
+          凸包边上无点：<=    凸包边上有点：<
+        */
         Stack[top++] = i;
     }
 }
