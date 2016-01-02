@@ -11,6 +11,8 @@ using namespace std;
 #define fi first
 #define se second
 #define pb(a) push_back(a)
+#define _0(x) (!(x))
+#define _1(x) (x)
 typedef vector<int> VI;
 typedef pair<int,int> PII;
 typedef vector<PII> VPII;
