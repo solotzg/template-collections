@@ -8,3 +8,7 @@
 ### BoardEscape
 * sg博弈+找规律
 * 找循环的规律是关键
+
+### RailroadSwitchOperator
+* a very good simulation problom
+* must be sure about the transformation between state.
