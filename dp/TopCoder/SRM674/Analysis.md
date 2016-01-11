@@ -3,3 +3,6 @@
 
 ### ClassicProblem
 * http://blog.csdn.net/solotzg/article/details/50427274
+
+### VampireTreeDiv2
+* 点覆盖问题
