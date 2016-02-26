@@ -18,46 +18,36 @@ typedef pair<int,int> PII;
 typedef vector<PII> VPII;
 typedef long long ll;
 
-struct Nine{
-    const static int MOD = 1e9+7, N = pow(9.0, 5.0)+5;
-    int dp[2][N], cnt[5005][10], s[50];
-    inline int add(int a, int b) {
-        a += b;
-        if (a >= MOD) a -= MOD;
-        else if (a < 0) a += MOD;
-        return a;
+struct Nine {
+    const static int MAXN = pow(9.0, 5), MOD = 1e9+7;
+    int dp[2][MAXN], cnt[5005][9], num[50], dn[10], dm[10];
+    int add(int a, int b) {
+        return (a+=b)>=MOD?a-MOD:a;
     }
-    inline int mul(int a, int b) {
+    int mul(int a, int b) {
         return (ll)a*b%MOD;
     }
-    int a[10], b[10];
-    int count(int n, VI d){
-        mst(s, 0);
-        rp(i,d.size())
-            s[d[i]]++;
-        mst(cnt, 0);
+    int count(int N, vector <int> d) {
+        mst(cnt, 0), mst(num, 0), mst(dp, 0);
+        rp(i,d.size()) ++num[d[i]];
         cnt[0][0] = 1;
-        rep(i,0,5004)rp(j,9)rp(k,10) {
-            cnt[i+1][(j+k)%9] = add(cnt[i+1][(j+k)%9], cnt[i][j]);
-        }
+        repd(n,1,d.size()) rp(i,9) repd(j,0,9) cnt[n][(i+j)%9] = add(cnt[n-1][i], cnt[n][(i+j)%9]);
         int cur = 0, nxt = 1-cur;
-        mst(dp, 0);
         dp[cur][0] = 1;
-        rp(i,50) if (s[i]) {
-            int * c = cnt[s[i]];
-            rp(mask, pow(9.0, n)) if (dp[cur][mask]) {
-                rp(o,9) {
-                    int x = mask, nmask = 0;
-                    rp(j,n) b[j]=x%9, x/=9;
-                    rp(j,n) {
-                        if ((i>>j) & 1)
-                            b[j]=(b[j]+o)%9;
+        rp(mask, 1<<N) if (num[mask]) {
+            rp(nine, pow(9.0, N)) if(dp[cur][nine]) {
+                int x = nine;
+                rp(i,N) dn[i] = x%9, x/=9;
+                rp(next_num, 9) {
+                    rp(pos, N) {
+                        if (mask & (1<<pos)) dm[pos] = (dn[pos]+next_num)%9;
+                        else dm[pos] = dn[pos];
                     }
-                    urp(j,n-1,0) nmask = nmask*9+b[j];
-                    dp[nxt][nmask] = add(dp[nxt][nmask], mul(dp[cur][mask], c[o]));
+                    x = 0;
+                    urp(i, N-1, 0) x = x*9 + dm[i];
+                    dp[nxt][x] = add(dp[nxt][x], mul(dp[cur][nine], cnt[num[mask]][next_num]));
                 }
             }
-            ///
             swap(cur, nxt);
             mst(dp[nxt], 0);
         }
@@ -68,7 +58,8 @@ struct Nine{
 int main() {
     auto n = new Nine ;
     cout<<n->count(
-                   2,{1,2,3}
-                   )<<endl;
+            5,
+    {1,3,5,8,24,22,25,21,30,2,4,0,6,7,9,11,14,13,12,15,18,17,16,19,26,29,31,28,27,10,20,23}
+        )<<endl;
     return 0;
 }
