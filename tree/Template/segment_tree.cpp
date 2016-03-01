@@ -11,7 +11,7 @@ struct SegmentTree {
     struct Node {
         // data
     };
-    Node da[N*3];
+    Node da[N*4];
     void build(int l, int r, int root) {
         // do something
         da[root] = Node();
