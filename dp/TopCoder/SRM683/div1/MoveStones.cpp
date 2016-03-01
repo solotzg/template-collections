@@ -19,7 +19,7 @@ typedef vector<PII> VPII;
 typedef long long ll;
 
 struct MoveStones{
-     long long get(vector <int> a, vector <int> b){
+     long long get_(vector <int> a, vector <int> b){
          int n = a.size();
          vector<ll> s(n);
          rp(i, n) s[i] = (ll)a[i]-b[i];
@@ -32,6 +32,18 @@ struct MoveStones{
                  o += abs(c);
              }
              res = min(res, o);
+         }
+         return res;
+     }
+     long long get(vector <int> a, vector <int> b){
+         if (accumulate(a.begin(), a.end(), 0ll)!=accumulate(b.begin(), b.end(), 0ll)) return -1;
+         int n = a.size();
+         vector<ll> s(n, 0);
+         rep(i, 1, n) s[i] = (ll)a[i]-b[i]+s[i-1];
+         nth_element(s.begin(), s.begin()+n/2, s.end());
+         ll p = s[n/2], res = 0;
+         rp(i, n) {
+             res += abs(s[i] - p);
          }
          return res;
      }
