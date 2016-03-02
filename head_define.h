@@ -13,6 +13,7 @@ using namespace std;
 #define pb(a) push_back(a)
 #define _0(x) (!(x))
 #define _1(x) (x)
+#define bit(x,y) (((x)>>(y))&1)
 typedef vector<int> VI;
 typedef pair<int,int> PII;
 typedef vector<PII> VPII;

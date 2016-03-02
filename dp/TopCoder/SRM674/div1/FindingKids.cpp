@@ -7,61 +7,75 @@ using namespace std;
 #define mst(a,b) memset(a,b,sizeof(a))
 #define vrp(it,v) for(auto it(v.begin());(it)!=(v.end());++it)
 #define vtr(v) (v).begin(),(v).end()
-typedef long long ll;
+#define mp(a,b) make_pair(a,b)
+#define fi first
+#define se second
+#define pb(a) push_back(a)
+#define _0(x) (!(x))
+#define _1(x) (x)
 typedef vector<int> VI;
-struct FindingKids{
-    const int M = 1e9+7;
-    VI lps, rps, pos;
-    ll res;
+typedef pair<int,int> PII;
+typedef vector<PII> VPII;
+typedef long long ll;
+
+struct FindingKids {
+    const static int M = 1e9+7, N = 2e5+5;
+    int lpos[N], rpos[N], bpos[N];
+    int nl, nr;
     int t;
-    int get_cnt(int x) {
-        return lower_bound()
-    }
-    ll getSum(int n, int q, int a, int b, int c){
-        int p, A = a, B = b, C = c;
-        set<int> vis;
+    PII pos[N];
+    ll getSum(int n, int q, int a, int b, int c) {
+        ll A, B, C;
+        A = a;
+        B = b;
+        C = c;
+        nl = nr = 0;
+        unordered_set<int> s;
         rp(i,n) {
-            A = ((ll)A*B+C)%M;
-            p = A%(M-n+i+1);
-            if (vis.find(p) != vis.end())
-                p = M-n+i;
-            if (p&1)
-                lps.push_back(p);
-            else
-                rps.push_back(p);
-            vis.insert(p);
-            pos.push_back(p);
+            A = (A*B+C)%M;
+            int p = A%(M-n+i+1);
+            if (s.find(p) != s.end()) p = M-n+i;
+            pos[i] = mp(p, i);
+            if (p % 2 == 0) rpos[nr++] = p;
+            else lpos[nl++] = p;
+            s.insert(p);
         }
-        VI spos(vtr(pos));
-        sort(vtr(lps));
-        sort(vtr(rps));
-        sort(vtr(spos));
-        A = a, B = b, C = c;
-        res = 0ll;
+        sort(lpos, lpos+nl);
+        sort(rpos, rpos+nr);
+        sort(pos, pos+n);
+        rp(i,n) bpos[pos[i].se] = i;
+        ll res = 0;
         rp(i,q) {
-            A = ((ll)A*B+C)%M;
+            A = (A*B+C)%M;
             int kid = A%n;
-            A = ((ll)A*B+C)%M;
+            A = (A*B+C)%M;
             t = A;
-            int p = lower_bound(vtr(spos), pos[kid])-spos.begin()+1;
-            int bg = -M, ed = 2*M+1, half;
+            kid = bpos[kid];
+            int bg = -M, ed = M*2+5;
             ll len = (ll)ed-bg;
             while (len > 0) {
-                half = len>>1;
-                int mid = half + bg;
-                if (get_cnt(mid) < p) {
-                    bg = mid+1;
-                    len = len-half+1;
-                }
-                else
-                    len = half;
+                int half = len/2;
+                int mid = bg+half;
+                int cl = upper_bound(lpos, lpos+nl, (ll)mid+t) - lpos;
+                int cr = upper_bound(rpos, rpos+nr, (ll)mid-t) - rpos;
+                if (cl + cr >= kid+1) ed = mid;
+                else bg = mid+1;
+                len = (ll)ed-bg;
             }
-            res += bg;
+            res += abs(bg);
         }
         return res;
     }
 };
 int main() {
+    FindingKids *k = new FindingKids;
+    cout<<k->getSum(
+            200000,
+            200000,
+            12345,
+            67890,
+            111213141
 
+        )<<endl;
     return 0;
 }

@@ -6,7 +6,7 @@
 using namespace std;
 const double eps = 1e-8;
 const double PI = acos(-1.0);
-int sgn(double x) {
+inline int sgn(double x) {
     if(fabs(x) < eps)return 0;
     if(x < 0)return -1;
     else return 1;
@@ -33,7 +33,9 @@ struct Point {
         return sgn(x-b.x)==0 && sgn(y-b.y)==0;
     }
 };
-
+inline double cross(const Point & o, const Point & p1, const Point & p2) {
+    return (p1-o)^(p2-o);
+}
 struct Line {
     Point s;
     Point e;
@@ -69,15 +71,15 @@ pair<int,Point> Intersection(const Line & A, const Line & B) {
     return make_pair(2, I);
 }
 // 绕原点逆时针旋转角度B(弧度值)
-Point rotate(Point A, double rad) {
+Point rotate(const Point & A, double rad) {
     return Point (A.x * cos (rad) - A.y * sin (rad), A.x * sin (rad) + A.y * cos (rad));
 }
 //*两点间距离
-double dist(Point a,Point b) {
+double dist(const Point & a, const Point & b) {
     return sqrt((a-b)*(a-b));
 }
 //*判断线段相交
-bool inter(Line l1,Line l2) {
+bool inter(const Line & l1, const Line & l2) {
     return
         max(l1.s.x,l1.e.x) >= min(l2.s.x,l2.e.x) &&
         max(l2.s.x,l2.e.x) >= min(l1.s.x,l1.e.x) &&
@@ -87,12 +89,12 @@ bool inter(Line l1,Line l2) {
         sgn((l1.s-l2.e)^(l2.s-l2.e))*sgn((l1.e-l2.e)^(l2.s-l2.e)) <= 0;
 }
 //判断直线和线段相交
-bool Seg_inter_line(Line l1,Line l2) { //判断直线l1和线段l2是否相交
+bool Seg_inter_line(const Line & l1, const Line & l2) { //判断直线l1和线段l2是否相交
     return sgn((l2.s-l1.e)^(l1.s-l1.e))*sgn((l2.e-l1.e)^(l1.s-l1.e)) <= 0;
 }
 //点到直线距离
 //返回为result,是点到直线最近的点
-double PointToLine(Point P,Line L,Point & res) {
+double PointToLine(const Point & P, const Line & L,Point & res) {
     double d = dist(L.s, L.e);
     double s = ((L.s-P)^(L.e-P))/d;
     res.x = P.x + s*(L.e.y-L.s.y)/d;
@@ -195,7 +197,7 @@ const int MAXN = 1010;
 Point list[MAXN];
 int Stack[MAXN],top;
 //相对于list[0]的极角排序
-bool _cmp(Point p1,Point p2) {
+bool _cmp(const Point & p1,const Point & p2) {
     double tmp = (p1-list[0])^(p2-list[0]);
     if(sgn(tmp) > 0)return true;
     else if(sgn(tmp) == 0 && sgn(dist(p1,list[0]) - dist(p2,list[0])) <= 0)
