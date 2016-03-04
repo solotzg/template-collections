@@ -10,7 +10,6 @@
 using namespace std;
 
 struct PrimeForDivide {
-    typedef int T;
     // N is not very big
     const static int N = 1e6+5;
     int mxPrime[N];
@@ -26,7 +25,7 @@ struct PrimeForDivide {
             }
         }
     }
-    void divide(T x, T factor[], int cnt[], int & len) {
+    void divide(T x, int factor[], int cnt[], int & len) {
         len = 0;
         while (x > 1) {
             int j = mxPrime[x], c = 0;
