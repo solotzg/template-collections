@@ -20,7 +20,7 @@ struct PrimeForDivide {
         memset(mxPrime, 0, sizeof mxPrime);
         for (int i = 2; i< N; ++i) {
             if (mxPrime[i]) continue;
-            for (int j = i+i; j< N; j += i) {
+            for (int j = i; j< N; j += i) {
                 mxPrime[j] = i;
             }
         }
