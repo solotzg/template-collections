@@ -25,7 +25,7 @@ struct PrimeForDivide {
             }
         }
     }
-    void divide(T x, int factor[], int cnt[], int & len) {
+    void divide(int x, int factor[], int cnt[], int & len) {
         len = 0;
         while (x > 1) {
             int j = mxPrime[x], c = 0;
