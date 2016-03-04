@@ -6,7 +6,37 @@
 #include <vector>
 #include <cmath>
 #include <map>
+#include <cstring>
 using namespace std;
+
+struct PrimeForDivide {
+    typedef int T;
+    // N is not very big
+    const static int N = 1e6+5;
+    int mxPrime[N];
+    PrimeForDivide() {
+        init_prime();
+    }
+    void init_prime() {
+        memset(mxPrime, 0, sizeof mxPrime);
+        for (int i = 2; i< N; ++i) {
+            if (mxPrime[i]) continue;
+            for (int j = i+i; j< N; j += i) {
+                mxPrime[j] = i;
+            }
+        }
+    }
+    void divide(T x, T factor[], int cnt[], int & len) {
+        len = 0;
+        while (x > 1) {
+            int j = mxPrime[x], c = 0;
+            factor[len] = j;
+            while ( x % j == 0) x /= j, ++c;
+            cnt[len++] = c;
+        }
+    }
+};
+
 struct Prime {
     typedef long long T;
     T _maxn;
@@ -75,13 +105,13 @@ struct Prime {
         }
     }
 } prime(10000000000ll);
-struct FactorDFS{
-    const int N = 105;
-    ll factor[N];
+struct FactorDFS {
+    const static int N = 105;
+    long long factor[N];
     int cnt[N], len;
-    void dfs(int pos, ll val) {
+    void dfs(int pos, long long val) {
         if (pos == len) {
-                // fuck something
+            // fuck something
             return;
         }
         for (int i = 0; i<= cnt[pos]; ++i) {
@@ -136,5 +166,23 @@ int main() {
         }
     }
     cout<<"origin : "<<a<<" , result : "<<sum<<endl<<endl;
+    {
+        int x = 656744, len;
+        int *fa = new int [(int)1e6];
+        int *cn = new int [(int)1e6];
+        PrimeForDivide *p = (new PrimeForDivide);
+        p->divide(x, fa, cn, len);
+        int y = 1;
+        for (int i = 0; i< len; ++i) {
+            cout<<"factor : "<<fa[i]<<", count : "<<cn[i]<<endl;
+            for (int j = 0; j< cn[i]; ++j) {
+                y *= fa[i];
+            }
+        }
+        cout<<"origin : "<<x<<" , result : "<<y<<endl<<endl;
+        delete []fa;
+        delete []cn;
+        delete p;
+    }
     return 0;
 }
