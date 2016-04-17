@@ -3,7 +3,7 @@ inline int mul (int a, int b) {
     return (ll)a*b%MOD;
 }
 inline int add (int a, int b) {
-    (a+=b)>=MOD?a-MOD:(a<0?a+MOD:a);
+    return (a+=b)>=MOD?a-MOD:(a<0?a+MOD:a);
 }
 int pow(int a, int b) {
     int r = 1, p = a;
