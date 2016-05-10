@@ -1,10 +1,12 @@
 const int N = 55;
-struct edge{
+struct edge {
     int v, nxt;
-}e[N*4];
+} e[N*4];
 int ecnt, head[N];
-void add(int u, int v){
-    e[ecnt].v = v; e[ecnt].nxt = head[u]; head[u] = ecnt++;
+void add(int u, int v) {
+    e[ecnt].v = v;
+    e[ecnt].nxt = head[u];
+    head[u] = ecnt++;
 }
 int dfn[N], low[N], cnt, isin[N];
 int vnblock[N], nblock, belong[N];
@@ -41,7 +43,17 @@ void tarjan(int u) {
             vnblock[nblock]++;
             --top;
             belong[v] = nblock;
-        }while (u != v);
+        } while (u != v);
         ++nblock;
     }
 }
+
+int main() {
+    init();
+    for (int i = 0; i < ... ; ++i) {
+        if (!dfn[i])
+            tarjan(i);
+    }
+    return 0;
+}
+
