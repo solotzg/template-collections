@@ -5,6 +5,9 @@ inline int mul (int a, int b) {
 inline int add (int a, int b) {
     return (a+=b)>=MOD?a-MOD:(a<0?a+MOD:a);
 }
+inline void sadd(int & a, int b) {
+    a = add(a, b);
+}
 int pow(int a, int b) {
     int r = 1, p = a;
     while (b) {
