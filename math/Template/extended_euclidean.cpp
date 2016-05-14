@@ -43,7 +43,7 @@ int main() {
     {
         /**
             用扩展欧几里得算法解不定方程ax+by=c;
-            gcd(a,b) % c == 0;
+            c % gcd(a,b) == 0;
         */
         int a = 4, b = 6, c = 8, x, y;
         int r = extend_gcd(a,b,x,y);
