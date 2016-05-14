@@ -21,7 +21,8 @@ int extend_gcd(int a,int b,int &x,int &y) {
         return r;
     }
 }
-// http://www.cnblogs.com/frog112111/archive/2012/08/19/2646012.html
+//www.cnblogs.com/frog112111/archive/2012/08/19/2646012.html
+//www.cnblogs.com/void/archive/2011/04/18/2020357.html
 int main() {
     {
         /**
