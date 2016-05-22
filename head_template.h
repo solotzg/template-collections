@@ -51,7 +51,7 @@ T cast (U x) {
     return y;
 }
 template<class T>
-vector<T> split(string s, string x=" ") {
+vector<T> split(const string & s, string x=" ") {
     vector<T> r;
     rp(i,s.size()) {
         string c;
@@ -59,4 +59,13 @@ vector<T> split(string s, string x=" ") {
         if(c.size()) r.push_back(cast<T>(c));
     }
     return r;
+}
+
+inline void tin(long long & x) {
+    int sg = 1;
+    char c;
+    while(((c=getchar())<'0'||c>'9')&&c!='-');
+    c=='-'?(sg=-1,x=0):(x=c-'0');
+    while((c=getchar())>='0'&&c<='9')x=x*10+c-'0';
+    x*=sg;
 }
