@@ -2,8 +2,14 @@ const static int MOD = 1e9+7;
 inline int mul (int a, int b) {
     return (ll)a*b%MOD;
 }
+inline void smul (int & a, int b) {
+    a = mul(a, b);
+}
 inline int add (int a, int b) {
     return (a+=b)>=MOD?a-MOD:(a<0?a+MOD:a);
+}
+inline void sadd(int & a, int b) {
+    a = add(a, b);
 }
 int pow(int a, int b) {
     int r = 1, p = a;
@@ -45,7 +51,7 @@ T cast (U x) {
     return y;
 }
 template<class T>
-vector<T> split(string s, string x=" ") {
+vector<T> split(const string & s, string x=" ") {
     vector<T> r;
     rp(i,s.size()) {
         string c;
@@ -53,4 +59,13 @@ vector<T> split(string s, string x=" ") {
         if(c.size()) r.push_back(cast<T>(c));
     }
     return r;
+}
+
+inline void tin(long long & x) {
+    int sg = 1;
+    char c;
+    while(((c=getchar())<'0'||c>'9')&&c!='-');
+    c=='-'?(sg=-1,x=0):(x=c-'0');
+    while((c=getchar())>='0'&&c<='9')x=x*10+c-'0';
+    x*=sg;
 }
