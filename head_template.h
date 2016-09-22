@@ -69,3 +69,6 @@ inline void tin(long long & x) {
     while((c=getchar())>='0'&&c<='9')x=x*10+c-'0';
     x*=sg;
 }
+
+#define smin(x,y) (x)=std::min((x),(y))
+#define smax(x,y) (x)=std::max((x),(y))
