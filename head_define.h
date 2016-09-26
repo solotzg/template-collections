@@ -14,9 +14,10 @@ using namespace std;
 #define _1(x) (x)
 #define bit(x,y) (((x)>>(y))&1)
 #define siz(x) ((int)(x).size())
+template<typename T>inline void smin(T & x, const T &y) {x=min(x,y);}
+template<typename T>inline void smax(T & x, const T &y) {x=max(x,y);}
 typedef long long ll;
 typedef vector<int> VI;
 typedef vector<ll> VLL;
 typedef pair<int,int> PII;
 typedef vector<PII> VPII;
-

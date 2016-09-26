@@ -70,5 +70,3 @@ inline void tin(long long & x) {
     x*=sg;
 }
 
-#define smin(x,y) (x)=std::min((x),(y))
-#define smax(x,y) (x)=std::max((x),(y))
