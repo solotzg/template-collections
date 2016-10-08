@@ -61,7 +61,7 @@ vector<T> split(const string & s, string x=" ") {
     return r;
 }
 
-inline void tin(long long & x) {
+template<class T>inline void tin(T & x) {
     int sg = 1;
     char c;
     while(((c=getchar())<'0'||c>'9')&&c!='-');
