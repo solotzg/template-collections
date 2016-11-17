@@ -16,8 +16,8 @@ using namespace std;
 #define siz(x) ((int)(x).size())
 template<typename T>inline void smin(T & x, const T &y) {x=min(x,y);}
 template<typename T>inline void smax(T & x, const T &y) {x=max(x,y);}
-typedef long long ll;
+typedef long long LL;
 typedef vector<int> VI;
-typedef vector<ll> VLL;
+typedef vector<LL> VLL;
 typedef pair<int,int> PII;
 typedef vector<PII> VPII;
