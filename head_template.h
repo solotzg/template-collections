@@ -1,6 +1,6 @@
 const static int MOD = 1e9+7;
 inline int mul (int a, int b) {
-    return (ll)a*b%MOD;
+    return (LL)a*b%MOD;
 }
 inline void smul (int & a, int b) {
     a = mul(a, b);
