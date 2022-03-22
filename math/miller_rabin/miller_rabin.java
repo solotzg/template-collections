@@ -32,7 +32,7 @@ public class Main {
 class MillerRabin {
     static final int Times = 20;
 
-    //miller_rabin的一遍探测，返回1表示是合数
+    // miller_rabin, return `true` if composite
     private boolean check(BigInteger a, BigInteger n, BigInteger x, int t) {
         BigInteger res = a.modPow(x, n);
         BigInteger last = res;
@@ -45,8 +45,8 @@ class MillerRabin {
         return res.compareTo(BigInteger.ONE) != 0;
     }
 
-    //miller_rabin算法，返回false表示是合数，否则是素数
-    //返回素数出错的概率(最高)为 1 / (4 ^ times)
+    // miller_rabin, return `true` if prime
+    // max wrong rate: 1 / (4 ^ times)
     public boolean miller_rabin(BigInteger n) {
         if (n.compareTo(BigInteger.valueOf(2)) == 0) return true;
         if (n.compareTo(BigInteger.valueOf(2)) < 0) return false;
@@ -63,16 +63,14 @@ class MillerRabin {
             BigInteger a = new BigInteger(maxNumBitLength, new Random());
             a = a.mod(nSub1).add(BigInteger.ONE);
             if (check(a, n, x, t))
-                return false;//合数
+                return false; // composite
         }
         return true;
     }
 
-    //************************************************
-    //pollard_rho 算法进行质因数分解
-    //************************************************
-    public BigInteger factor[];//质因数分解结果（刚返回时是无序的）
-    public int tol;//质因数的个数。数组小标从0开始
+    // pollard_rho
+    public BigInteger factor[]; // factorization no order
+    public int tol; // num of prime factor
 
     private BigInteger pollard_rho(BigInteger x, BigInteger c) {
         BigInteger i = BigInteger.ONE, k = BigInteger.valueOf(2);
@@ -93,9 +91,9 @@ class MillerRabin {
         }
     }
 
-    //对n进行素因子分解
+    // factorize `n`
     private void find_fac_imp(BigInteger n) {
-        if (miller_rabin(n)) { //素数
+        if (miller_rabin(n)) {
             factor[tol++] = n;
             return;
         }

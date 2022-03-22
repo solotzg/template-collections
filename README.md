@@ -1,4 +1,5 @@
-# algorithm-template
+# Algorithm Template
 
-* personal algorithm template
-* a few competitions of TopCoder|CodeForce
+personal algorithm template
+
+
