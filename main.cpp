@@ -1,0 +1,1 @@
+int main() { MSGLN("666"); }

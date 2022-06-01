@@ -1,0 +1,8 @@
+{
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/cmake-build-debug",
+        "--background-index",
+        "-pretty",
+        "--log=info"
+    ]
+}

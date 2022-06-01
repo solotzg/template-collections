@@ -1,0 +1,41 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "reload-cmake",
+            "type": "shell",
+            "command": "${workspaceFolder}/.vscode/cmake-debug.sh",
+            "args": [],
+            "problemMatcher": []
+        },
+        {
+            "label": "clean-cmake-build",
+            "type": "shell",
+            "command": "rm -rf ${workspaceFolder}/cmake-build-debug",
+            "args": [],
+            "problemMatcher": []
+        },
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "cd ${workspaceFolder}/cmake-build-debug && cmake --build . --parallel",
+            "problemMatcher": []
+        },
+        {
+            "label": "release-build",
+            "type": "shell",
+            "command": "${workspaceFolder}/.vscode/build-release.sh",
+            "problemMatcher": []
+        },
+        {
+            "label": "release-build-run",
+            "type": "shell",
+            "command": "cd ${workspaceFolder}/cmake-build-release && ./CPPTest",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "release-build",
+            ],
+            "problemMatcher": []
+        },
+    ]
+}
