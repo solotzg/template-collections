@@ -93,6 +93,7 @@
 #include <bits/stdc++.h>
 #endif
 
+#include "head_template.h"
 #include "scope_guard.h"
 
 #define CAT(a, b) a##b
