@@ -50,6 +50,7 @@ if (ENABLE_THINLTO)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto=thin -fvisibility=hidden -fvisibility-inlines-hidden -fsplit-lto-unit")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto=thin -fvisibility=hidden -fvisibility-inlines-hidden -fwhole-program-vtables -fsplit-lto-unit")
     set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -flto=thin -flto-jobs=${THINLTO_JOBS} -fvisibility=hidden -fvisibility-inlines-hidden -fwhole-program-vtables -fsplit-lto-unit")
+    message (STATUS "Using `ThinLTO`, lto-jobs=${THINLTO_JOBS}")
 endif ()
 
 option (USE_CCACHE "Set to OFF to disable ccache" OFF)

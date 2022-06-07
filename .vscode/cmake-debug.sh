@@ -27,4 +27,5 @@ CC=${CC} CXX=${CXX} cmake -S ${WORKSPACE_FOLDER} \
     -DENABLE_TIME_TRACES=0 \
     -DENABLE_THINLTO=0 \
     -DENABLE_PCH=ON \
+    -DUSE_CCACHE=OFF \
     -GNinja

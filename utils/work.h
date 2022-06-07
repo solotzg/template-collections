@@ -1,7 +1,5 @@
 #pragma once
 
-#if __APPLE__
-
 // C
 #ifndef _GLIBCXX_NO_ASSERT
 #include <cassert>
@@ -39,7 +37,7 @@
 #include <complex>
 #include <deque>
 #include <exception>
-#include <fstream>
+// #include <fstream>
 #include <functional>
 #include <iomanip>
 #include <ios>
@@ -89,8 +87,8 @@
 #include <unordered_set>
 #endif
 
-#else
-#include <bits/stdc++.h>
+#if __cplusplus >= 201402L
+#include <shared_mutex>
 #endif
 
 #include "head_template.h"
