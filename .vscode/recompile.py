@@ -96,6 +96,8 @@ class Runner:
             '--file', help='absolute path of file to compile', required=True)
         parser.add_argument(
             '--type', help='build type', required=True, choices=('syntax', 'tidy', 'build'))
+        parser.add_argument(
+            '--time-trace', help='enable time trace', action='store_true')
         self.args = parser.parse_args()
         self.repo_path = os.getcwd()
         self.file_path = self.args.file
@@ -108,7 +110,7 @@ class Runner:
         elif self.args.type == 'tidy':
             self.run_clang_tidy()
         elif self.args.type == 'build':
-            self.run_recompile_syntax(False)
+            self.run_recompile_syntax(False, self.args.time_trace)
         else:
             exit(-1)
 
@@ -122,8 +124,10 @@ class Runner:
         res = run_cmd("{} {}".format(cmd, ' '.join(args)), show_cmd=True)
         logger.error(''.join(res))
 
-    def run_recompile_syntax(self, syntax_only=True):
+    def run_recompile_syntax(self, syntax_only=True, time_trace=False):
         suffix = " -fsyntax-only" if syntax_only else ""
+        if time_trace:
+            suffix += " -ftime-trace"
         for a in self.compile_commands_set:
             f = a.get("file")
             if f != self.file_path:

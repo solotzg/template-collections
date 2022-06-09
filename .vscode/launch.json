@@ -14,7 +14,7 @@
                 "--file",
                 "${file}",
                 "--type",
-                "build"
+                "build",
             ],
             "cwd": "${workspaceFolder}/cmake-build-debug"
         },
