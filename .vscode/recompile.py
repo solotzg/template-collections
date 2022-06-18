@@ -80,9 +80,9 @@ def wrap_run_time(func):
 
 
 @wrap_run_time
-def run_cmd(cmd, show_cmd=False):
+def run_cmd(cmd, show_cmd=True):
     if show_cmd:
-        logger.info("RUN CMD:\n\t{}\n".format(cmd))
+        logger.info("RUN CMD:\n{}\n".format(cmd))
     res = os.popen(cmd).readlines()
     return res
 

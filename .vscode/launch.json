@@ -19,6 +19,20 @@
             "cwd": "${workspaceFolder}/cmake-build-debug"
         },
         {
+            "type": "lldb",
+            "request": "launch",
+            "name": "CheckSyntax",
+            "program": "python3",
+            "args": [
+                "${workspaceFolder}/.vscode/recompile.py",
+                "--file",
+                "${file}",
+                "--type",
+                "syntax",
+            ],
+            "cwd": "${workspaceFolder}/cmake-build-debug"
+        },
+        {
             "name": "Debug",
             "type": "lldb",
             "request": "launch",
