@@ -1,18 +1,46 @@
 #pragma once
 
+#include "utils.hpp"
+
 #include <cassert>
 #include <cstdint>
 #include <optional>
 #include <thread>
 #include <utility>
 
-template <size_t CpuCacheLineSize = 64> struct SPSCQueueBase {
-  static constexpr size_t CPU_CACHE_LINE_SIZE = CpuCacheLineSize;
-};
+template <typename T, typename Allocator = std::allocator<T>>
+struct SPSCQueue : BasicConfig {
+  struct SPSCQueueCustomer {
+    bool IsEmpty() { return spsc_queue_.IsEmpty(); }
+    std::optional<T> Get() { return spsc_queue_.Get(); }
+    template <typename... Args> bool Get(Args &&...args) {
+      return spsc_queue_.Get(std::forward<Args>(args)...);
+    }
 
-template <typename T, typename Allocator = std::allocator<T>,
-          typename Base = SPSCQueueBase<>>
-struct SPSCQueue : Base {
+  private:
+    friend struct SPSCQueue;
+    SPSCQueueCustomer(SPSCQueue &spsc_queue) : spsc_queue_(spsc_queue) {}
+    SPSCQueueCustomer(const SPSCQueueCustomer &) = delete;
+    SPSCQueue &spsc_queue_;
+  };
+
+  struct SPSCQueueProducer {
+    bool IsFull() { return spsc_queue_.IsFull(); }
+    template <typename... Args> bool Put(Args &&...args) {
+      return spsc_queue_.Put(std::forward<Args>(args)...);
+    }
+
+  private:
+    friend struct SPSCQueue;
+    SPSCQueueProducer(SPSCQueue &spsc_queue) : spsc_queue_(spsc_queue) {}
+    SPSCQueueProducer(const SPSCQueueProducer &) = delete;
+    SPSCQueue &spsc_queue_;
+  };
+
+  SPSCQueueProducer GenProducer() { return SPSCQueueProducer{*this}; }
+
+  SPSCQueueCustomer GenCustomer() { return SPSCQueueCustomer{*this}; }
+
   static uint32_t NextPow2(uint32_t v) {
     v--;
     v |= v >> 1;
@@ -73,34 +101,17 @@ struct SPSCQueue : Base {
     buff_.Clear(max_num_, allocator_);
   }
 
-  bool Put(T &&data) {
-    if (IsFull())
-      return false;
-    auto cur = tail_.load(std::memory_order_relaxed);
-    auto next = (cur + 1) & buffer_mask_;
-    buff_.Set(cur, std::move(data));
-    tail_.store(next, std::memory_order_release);
-    return true;
-  }
+  static const char *name() { return "SPSCQueue"; }
 
+  size_t capacity() const { return max_num_ - 1; }
+
+protected:
   bool IsEmpty() {
     auto cur = head_.load(std::memory_order_relaxed);
     if (cur == tail_cache_) {
       tail_cache_ = tail_.load(std::memory_order_acquire);
       if (cur == tail_cache_)
         return true;
-    }
-    return false;
-  }
-
-  bool IsFull() {
-    auto cur = tail_.load(std::memory_order_relaxed);
-    auto next = (cur + 1) & buffer_mask_;
-    if (next == head_cache_) {
-      head_cache_ = head_.load(std::memory_order_acquire);
-      if (next == head_cache_) {
-        return true;
-      }
     }
     return false;
   }
@@ -120,9 +131,27 @@ struct SPSCQueue : Base {
     return true;
   }
 
-  static const char *name() { return "SPSCQueue"; }
+  bool IsFull() {
+    auto cur = tail_.load(std::memory_order_relaxed);
+    auto next = (cur + 1) & buffer_mask_;
+    if (next == head_cache_) {
+      head_cache_ = head_.load(std::memory_order_acquire);
+      if (next == head_cache_) {
+        return true;
+      }
+    }
+    return false;
+  }
 
-  size_t capacity() const { return max_num_ - 1; }
+  bool Put(T &&data) {
+    if (IsFull())
+      return false;
+    auto cur = tail_.load(std::memory_order_relaxed);
+    auto next = (cur + 1) & buffer_mask_;
+    buff_.Set(cur, std::move(data));
+    tail_.store(next, std::memory_order_release);
+    return true;
+  }
 
 private:
   template <typename F> void GetImpl(F &&f) {
@@ -132,11 +161,11 @@ private:
   }
 
 private:
-  alignas(Base::CPU_CACHE_LINE_SIZE) std::atomic_size_t head_{};
-  alignas(Base::CPU_CACHE_LINE_SIZE) std::atomic_size_t tail_{};
-  alignas(Base::CPU_CACHE_LINE_SIZE) size_t head_cache_{};
-  alignas(Base::CPU_CACHE_LINE_SIZE) size_t tail_cache_{};
-  [[maybe_unused]] alignas(Base::CPU_CACHE_LINE_SIZE) uint8_t pad_{};
+  alignas(CPU_CACHE_LINE_SIZE) std::atomic_size_t head_{};
+  alignas(CPU_CACHE_LINE_SIZE) std::atomic_size_t tail_{};
+  alignas(CPU_CACHE_LINE_SIZE) size_t head_cache_{};
+  alignas(CPU_CACHE_LINE_SIZE) size_t tail_cache_{};
+  [[maybe_unused]] alignas(CPU_CACHE_LINE_SIZE) uint8_t pad_{};
   Allocator allocator_;
   const size_t max_num_;
   const size_t buffer_mask_;
@@ -149,38 +178,47 @@ static void _test_spsc_queue() {
   static_assert(alignof(SPSCQueue<void *>) == 64);
   {
     SPSCQueue<uint8_t> s(1);
-    assert(s.Put(88));
-    assert(s.Get().value() == 88);
+    auto producer = s.GenProducer();
+    auto customer = s.GenCustomer();
+
+    assert(producer.Put(88));
+    assert(customer.Get().value() == 88);
   }
   {
     SPSCQueue<std::string> s(13);
+    auto producer = s.GenProducer();
+    auto customer = s.GenCustomer();
+
     assert(s.capacity() == 15);
     {
       std::string ori = "12345";
-      assert(s.Put(std::string(ori)));
-      auto v = s.Get();
+      assert(producer.Put(std::string(ori)));
+      auto v = customer.Get();
       assert(v);
       assert((*v) == ori);
-      assert(!s.Get());
+      assert(!customer.Get());
     }
   }
   {
     SPSCQueue<std::string> s(3);
+    auto producer = s.GenProducer();
+    auto customer = s.GenCustomer();
+
     assert(s.capacity() == 3);
     for (int i = 0; i < 3; ++i) {
-      assert(s.Put(std::to_string(i)));
+      assert(producer.Put(std::to_string(i)));
     }
-    assert(!s.Put("..."));
+    assert(!producer.Put("..."));
     std::string v;
-    assert(s.Get(v));
+    assert(customer.Get(v));
     assert(v == "0");
-    assert(s.Get(v));
+    assert(customer.Get(v));
     assert(v == "1");
-    assert(s.Get(v));
+    assert(customer.Get(v));
     assert(v == "2");
     {
-      assert(s.Put("..."));
-      assert(s.Get() == "...");
+      assert(producer.Put("..."));
+      assert(customer.Get() == "...");
     }
   }
   {
@@ -208,26 +246,32 @@ static void _test_spsc_queue() {
     assert(cnt == 0);
     {
       SPSCQueue<Test> s(3);
-      s.Put(Test{2});
-      s.Put(Test{3});
-      s.Put(Test{4});
+      auto producer = s.GenProducer();
+      auto customer = s.GenCustomer();
+
+      producer.Put(Test{2});
+      producer.Put(Test{3});
+      producer.Put(Test{4});
       assert(cnt == 3);
-      s.Get();
+      customer.Get();
       assert(cnt == 2);
     }
     assert(cnt == 0);
 
     {
       SPSCQueue<Test> s(3);
+      auto producer = s.GenProducer();
+      auto customer = s.GenCustomer();
+
       std::thread t1([&]() {
         for (int i = 0; i < 8192; ++i) {
-          while (!s.Put(Test{i + 1}))
+          while (!producer.Put(Test{i + 1}))
             std::this_thread::yield();
         }
       });
       for (int i = 0; i < 8192; ++i) {
         while (1) {
-          auto v = s.Get();
+          auto v = customer.Get();
           if (v) {
             assert(v->v == i + 1);
             break;

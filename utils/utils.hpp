@@ -5,6 +5,10 @@
 #include <mutex>
 #include <shared_mutex>
 
+struct BasicConfig {
+  static constexpr size_t CPU_CACHE_LINE_SIZE = 64;
+};
+
 class MutexLockWrap {
 public:
   using Mutex = std::mutex;
@@ -56,7 +60,7 @@ struct AsyncNotifier {
     return AsyncNotifier::Status::Timeout;
   }
   virtual Status
-  BlockedWaitUtil(const std::chrono::system_clock::time_point &) {
+  BlockedWaitUtil(const std::chrono::steady_clock::time_point &) {
     return AsyncNotifier::Status::Timeout;
   }
   virtual void Wake() const = 0;
@@ -65,11 +69,11 @@ struct AsyncNotifier {
 
 struct Notifier final : AsyncNotifier, MutexLockWrap {
   Status BlockedWaitFor(const std::chrono::milliseconds &timeout) override {
-    return BlockedWaitUtil(std::chrono::system_clock::now() + timeout);
+    return BlockedWaitUtil(std::chrono::steady_clock::now() + timeout);
   }
 
   Status BlockedWaitUtil(
-      const std::chrono::system_clock::time_point &time_point) override {
+      const std::chrono::steady_clock::time_point &time_point) override {
     // if flag from false to false, wait for notification.
     // if flag from true to false, do nothing.
     auto res = AsyncNotifier::Status::Normal;

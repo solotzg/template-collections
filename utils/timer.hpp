@@ -2,8 +2,8 @@
 
 #include "utils.hpp"
 
-struct Timer {
-  using Clock = std::chrono::system_clock;
+struct Timer : BasicConfig {
+  using Clock = std::chrono::steady_clock;
   using TimePoint = Clock::time_point;
   using Delay = std::chrono::milliseconds;
 
@@ -46,8 +46,6 @@ struct Timer {
   };
 
   struct Queue : MutexLockWrap {
-
-    std::priority_queue<Node> queue_;
     template <typename F> void InvokeTop(F &&f) const {
       auto _ = GenLockGuard();
 
@@ -85,9 +83,12 @@ struct Timer {
         }
       }
     }
+
+    //
+    std::priority_queue<Node> queue_;
   };
 
-  TaskPtr Schedule(Task::Func &&task, const Delay &delay) {
+  TaskPtr Schedule(typename Task::Func &&task, const Delay &delay) {
     auto res = std::make_shared<Task>(std::move(task));
     queue_.Add(delay, res);
     notifier_.Wake();
@@ -151,11 +152,13 @@ struct Timer {
   ~Timer() { StopAndWait(); }
 
 private:
+  // cache unfriendly
+  alignas(CPU_CACHE_LINE_SIZE) Notifier notifier_;
+  alignas(CPU_CACHE_LINE_SIZE) Queue queue_;
+  [[maybe_unused]] alignas(CPU_CACHE_LINE_SIZE) uint8_t pad_{};
+  //
   const Delay default_tick_;
   std::atomic_bool stop_{};
-  Notifier notifier_;
-  TimePoint next_wake_time_;
-  Queue queue_;
   std::unique_ptr<std::thread> context_;
 };
 
