@@ -20,12 +20,18 @@ cd ${WORKSPACE_FOLDER}/cmake-build-release
 CC=${CC:-clang}
 CXX=${CXX:-clang++}
 
+if [[ $(uname -s) == Darwin ]]; then
+    ENABLE_THINLTO=OFF
+else
+    ENABLE_THINLTO=ON
+fi
+
 CC=${CC} CXX=${CXX} cmake -S ${WORKSPACE_FOLDER} \
     -DCMAKE_BUILD_TYPE=RELEASE \
     -Wno-dev \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DENABLE_TIME_TRACES=0 \
-    -DENABLE_THINLTO=ON \
+    -DENABLE_THINLTO=${ENABLE_THINLTO} \
     -DENABLE_PCH=ON \
     -DUSE_CCACHE=OFF \
     -DARCHNATIVE=ON \
