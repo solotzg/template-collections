@@ -85,3 +85,10 @@ else ()
 endif ()
 
 add_target_pch("${PROJECT_SOURCE_DIR}/utils/work.h" CPPTest)
+
+option (ARCHNATIVE "Enable `-march=native` compiler flag" OFF)
+if (ARCHNATIVE)
+    message(STATUS "Using `-march=native` compiler flag")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+endif ()

@@ -28,6 +28,7 @@ CC=${CC} CXX=${CXX} cmake -S ${WORKSPACE_FOLDER} \
     -DENABLE_THINLTO=0 \
     -DENABLE_PCH=ON \
     -DUSE_CCACHE=OFF \
+    -DARCHNATIVE=OFF \
     -GNinja
 
 cmake --build . --parallel ${NPROC}
