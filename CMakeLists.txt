@@ -19,7 +19,7 @@ if (LINKER_NAME)
     set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=${LINKER_NAME}")
 endif ()
 
-# set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pthread")
+set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pthread")
 
 add_executable(CPPTest main.cpp ${PROJECT_SOURCE_DIR}/utils/work.cpp)
 

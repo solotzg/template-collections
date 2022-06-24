@@ -1,29 +1,59 @@
+#pragma once
+
 #include "head_define.h"
 
-const static int MOD = 1e9 + 7;
-inline int mul(int a, int b) { return (LL)a * b % MOD; }
-inline void smul(int &a, int b) { a = mul(a, b); }
-inline int add(int a, int b) {
-  return (a += b) >= MOD ? a - MOD : (a < 0 ? a + MOD : a);
-}
-inline void sadd(int &a, int b) { a = add(a, b); }
-
-inline int fast_pow_mod(int a, int b) {
-  int r = 1, p = a;
-  while (b) {
-    if (b & 1)
-      r = mul(r, p);
-    p = mul(p, p);
-    b >>= 1;
+template <typename T, typename UP> struct OperatorWithModulo {
+  static inline T mul_mod(T a, T b, T mod) {
+    if constexpr (sizeof(T) < sizeof(UP)) {
+      return UP(a) * b % mod;
+    } else {
+      T res{};
+      while (b) {
+        if (b & 1)
+          res = add_mod(res, a, mod);
+        a = add_mod(a, a, mod);
+        b >>= 1;
+      }
+      return res;
+    }
   }
-  return r;
-}
+  static inline void smul_mod(T &a, T b, T mod) { a = mul_mod(a, b, mod); }
+  static inline T add_mod(T a, T b, T mod) {
+    if constexpr (std::numeric_limits<T>::min() == 0)
+      return (a += b) >= mod ? a - mod : (a < 0 ? a + mod : a);
+    else
+      return (a += b) >= mod ? a - mod : a;
+  }
+
+  static inline void sadd_mod(T &a, T b, T mod) { a = add_mod(a, b, mod); }
+
+  static inline T pow_mod(T a, T b, T mod) {
+    T r = 1, p = a;
+    while (b) {
+      if (b & 1)
+        r = mul_mod(r, p, mod);
+      p = mul_mod(p, p, mod);
+      b >>= 1;
+    }
+    return r;
+  }
+};
+
+template <typename T, typename UP, const T MOD = 1000000007>
+struct ModuloOperator : OperatorWithModulo<T, UP> {
+  using Base = OperatorWithModulo<T, UP>;
+  inline T mul(T a, T b) { return Base::mul_mod(a, b, MOD); }
+  inline void smul(T &a, T b) { return Base::smul_mod(a, b, MOD); }
+  inline T add(T a, T b) { return Base::add_mod(a, b, MOD); }
+  inline void sadd(T &a, T b) { return Base::sadd_mod(a, b, MOD); }
+  inline T pow(T a, T b) { return Base::pow_mod(a, b, MOD); }
+};
 
 template <size_t N> struct Comb {
   void init() {
     rp(i, N) {
       comb[i][0] = comb[i][i] = 1;
-      rep(j, 1, i) { comb[i][j] = add(comb[i - 1][j - 1], comb[i - 1][j]); }
+      rep(j, 1, i) { comb[i][j] = add_mod(comb[i - 1][j - 1], comb[i - 1][j]); }
     }
   }
   int get_comb(int n, int k) {
@@ -37,15 +67,15 @@ template <size_t N> struct Comb {
 };
 
 template <size_t N> struct Factorial {
-  void init() {
+  void init(int64_t mod) {
     A[0] = RA[0] = 1;
-    rep(i, 1, N) A[i] = mul(A[i - 1], i), RA[i] = pow(A[i], MOD - 2);
+    rep(i, 1, N) A[i] = mul_mod(A[i - 1], i), RA[i] = pow(A[i], mod - 2);
   }
   int get_comb(int n, int k) {
     assert(k <= n);
     assert(n < N);
     assert(k < N);
-    return mul(A[n], mul(RA[k], RA[n - k]));
+    return mul_mod(A[n], mul_mod(RA[k], RA[n - k]));
   }
   int A[N], RA[N];
 };

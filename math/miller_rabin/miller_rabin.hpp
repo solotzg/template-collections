@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../../utils/head_template.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -38,38 +40,12 @@ public:
   const int64_t *factors() const { return factors_; }
 
 private:
-  int64_t add(int64_t a, int64_t b, int64_t mod) const {
-    return a += b, a >= mod ? a - mod : a;
-  }
-
-  int64_t multi(int64_t a, int64_t b, int64_t mod) const {
-    int64_t res = 0;
-    while (b) {
-      if (b & 1)
-        res = add(res, a, mod);
-      a = add(a, a, mod);
-      b >>= 1;
-    }
-    return res;
-  }
-
-  int64_t pow(int64_t a, int64_t b, int64_t mod) const {
-    int64_t res = 1;
-    while (b) {
-      if (b & 1)
-        res = multi(res, a, mod);
-      a = multi(a, a, mod);
-      b >>= 1;
-    }
-    return res;
-  }
-
   // miller_rabin, return `true` if composite
   bool IsComposite(int64_t a, int64_t n, int64_t x, int64_t t) const {
-    int64_t ret = pow(a, x, n);
+    int64_t ret = OperatorWithModulo<int64_t, INT128>::pow_mod(a, x, n);
     int64_t last = ret;
     for (int i = 1; i <= t; i++) {
-      ret = multi(ret, ret, n);
+      ret = OperatorWithModulo<int64_t, INT128>::mul_mod(ret, ret, n);
       if (ret == 1 && last != 1 && last != n - 1)
         return 1;
       last = ret;
@@ -98,7 +74,7 @@ private:
     int64_t y = x0;
     while (1) {
       i++;
-      x0 = (multi(x0, x0, x) + c) % x;
+      x0 = (OperatorWithModulo<int64_t, INT128>::mul_mod(x0, x0, x) + c) % x;
       int64_t d = gcd(y - x0, x);
       if (d != 1 && d != x)
         return d;

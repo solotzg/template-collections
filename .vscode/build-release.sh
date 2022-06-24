@@ -25,10 +25,10 @@ CC=${CC} CXX=${CXX} cmake -S ${WORKSPACE_FOLDER} \
     -Wno-dev \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DENABLE_TIME_TRACES=0 \
-    -DENABLE_THINLTO=0 \
+    -DENABLE_THINLTO=ON \
     -DENABLE_PCH=ON \
     -DUSE_CCACHE=OFF \
-    -DARCHNATIVE=OFF \
+    -DARCHNATIVE=ON \
     -GNinja
 
 cmake --build . --parallel ${NPROC}

@@ -138,12 +138,15 @@
   } while (false)
 
 struct TimeCost {
+  using Clock = std::chrono::steady_clock;
+  //
   TimeCost(const char *label = "ROOT");
   ~TimeCost();
   void Show(const char *prefix = nullptr) const;
   void Reset();
+  Clock::duration Duration();
 
 private:
   const char *label_;
-  std::chrono::steady_clock::time_point start_;
+  Clock::time_point start_;
 };

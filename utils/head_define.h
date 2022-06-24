@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cstdint>
 #include <vector>
 
@@ -22,3 +24,10 @@ typedef std::vector<LL> VLL;
 typedef std::vector<ULL> VULL;
 typedef std::pair<int, int> PII;
 typedef std::vector<PII> VPII;
+
+#ifdef __GNUC__
+
+typedef unsigned __int128 UINT128;
+typedef __int128 INT128;
+
+#endif

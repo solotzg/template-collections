@@ -1,11 +1,10 @@
 #include "work.h"
 #include <chrono>
 
-TimeCost::TimeCost(const char *label)
-    : label_(label), start_(std::chrono::steady_clock::now()) {}
+TimeCost::TimeCost(const char *label) : label_(label), start_(Clock::now()) {}
 
 void TimeCost::Show(const char *prefix) const {
-  auto end = std::chrono::steady_clock::now();
+  auto end = Clock::now();
 
   MSG("[" << label_ << "]");
   if (prefix)
@@ -18,4 +17,8 @@ void TimeCost::Show(const char *prefix) const {
 
 TimeCost::~TimeCost() { Show("END"); }
 
-void TimeCost::Reset() { start_ = std::chrono::steady_clock::now(); }
+void TimeCost::Reset() { start_ = Clock::now(); }
+
+TimeCost::Clock::duration TimeCost::Duration() {
+  return start_.time_since_epoch();
+}
