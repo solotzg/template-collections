@@ -19,7 +19,7 @@ template <typename T, typename UP> struct OperatorWithModulo {
   }
   static inline void smul_mod(T &a, T b, T mod) { a = mul_mod(a, b, mod); }
   static inline T add_mod(T a, T b, T mod) {
-    if constexpr (std::numeric_limits<T>::min() == 0)
+    if constexpr (std::numeric_limits<T>::min() != 0)
       return (a += b) >= mod ? a - mod : (a < 0 ? a + mod : a);
     else
       return (a += b) >= mod ? a - mod : a;
@@ -49,21 +49,25 @@ struct ModuloOperator : OperatorWithModulo<T, UP> {
   inline T pow(T a, T b) { return Base::pow_mod(a, b, MOD); }
 };
 
-template <size_t N> struct Comb {
+template <size_t N, int32_t MOD> struct Comb {
+  using T = int32_t;
   void init() {
     rp(i, N) {
-      comb[i][0] = comb[i][i] = 1;
-      rep(j, 1, i) { comb[i][j] = add_mod(comb[i - 1][j - 1], comb[i - 1][j]); }
+      comb_[i][0] = comb_[i][i] = 1;
+      rep(j, 1, i) {
+        comb_[i][j] = modulo_.add(comb_[i - 1][j - 1], comb_[i - 1][j]);
+      }
     }
   }
-  int get_comb(int n, int k) {
+  T get_comb(int n, int k) {
     assert(k <= n);
     assert(n < N);
     assert(k < N);
-    return comb[n][k];
+    return comb_[n][k];
   }
 
-  int comb[N][N];
+  T comb_[N][N];
+  ModuloOperator<int32_t, int64_t, MOD> modulo_;
 };
 
 template <size_t N> struct Factorial {
