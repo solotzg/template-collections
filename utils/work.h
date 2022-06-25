@@ -151,5 +151,8 @@ private:
   Clock::time_point start_;
 };
 
-#define SHOW_TIME_COST                                                         \
-  TimeCost __LINE__##time_cost {}
+#define CONCAT_(prefix, suffix) prefix##suffix
+#define CONCAT(prefix, suffix) CONCAT_(prefix, suffix)
+#define SHOW_TIME_COST_IMPL(name)                                              \
+  TimeCost CONCAT(name, __LINE__) {}
+#define SHOW_TIME_COST SHOW_TIME_COST_IMPL(time_cost)
