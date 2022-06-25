@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../utils/head_template.h"
+#include "utils/head_template.h"
 
 #include <algorithm>
 #include <cmath>
