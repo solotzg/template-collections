@@ -42,11 +42,11 @@ template <typename T, typename UP> struct OperatorWithModulo {
 template <typename T, typename UP, const T MOD = 1000000007>
 struct ModuloOperator : OperatorWithModulo<T, UP> {
   using Base = OperatorWithModulo<T, UP>;
-  inline T mul(T a, T b) { return Base::mul_mod(a, b, MOD); }
-  inline void smul(T &a, T b) { return Base::smul_mod(a, b, MOD); }
-  inline T add(T a, T b) { return Base::add_mod(a, b, MOD); }
-  inline void sadd(T &a, T b) { return Base::sadd_mod(a, b, MOD); }
-  inline T pow(T a, T b) { return Base::pow_mod(a, b, MOD); }
+  static inline T mul(T a, T b) { return Base::mul_mod(a, b, MOD); }
+  static inline void smul(T &a, T b) { return Base::smul_mod(a, b, MOD); }
+  static inline T add(T a, T b) { return Base::add_mod(a, b, MOD); }
+  static inline void sadd(T &a, T b) { return Base::sadd_mod(a, b, MOD); }
+  static inline T pow(T a, T b) { return Base::pow_mod(a, b, MOD); }
 };
 
 template <size_t N, int32_t MOD> struct Comb {

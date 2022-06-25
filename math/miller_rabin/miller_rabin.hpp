@@ -8,6 +8,8 @@
 #include <cstdlib>
 
 struct MillerRabin {
+  using Modulo = OperatorWithModulo<int64_t, INT128>;
+
 public:
   void FindFacs(int64_t n) {
     this->fnum_ = 0;
@@ -42,10 +44,10 @@ public:
 private:
   // miller_rabin, return `true` if composite
   bool IsComposite(int64_t a, int64_t n, int64_t x, int64_t t) const {
-    int64_t ret = OperatorWithModulo<int64_t, INT128>::pow_mod(a, x, n);
+    int64_t ret = Modulo::pow_mod(a, x, n);
     int64_t last = ret;
     for (int i = 1; i <= t; i++) {
-      ret = OperatorWithModulo<int64_t, INT128>::mul_mod(ret, ret, n);
+      ret = Modulo::mul_mod(ret, ret, n);
       if (ret == 1 && last != 1 && last != n - 1)
         return 1;
       last = ret;
@@ -74,7 +76,7 @@ private:
     int64_t y = x0;
     while (1) {
       i++;
-      x0 = (OperatorWithModulo<int64_t, INT128>::mul_mod(x0, x0, x) + c) % x;
+      x0 = (Modulo::mul_mod(x0, x0, x) + c) % x;
       int64_t d = gcd(y - x0, x);
       if (d != 1 && d != x)
         return d;
@@ -99,6 +101,7 @@ private:
     FindFacsImpl(n / p);
   }
 
+private:
   const int check_times_;
   // pollard_rho
   int64_t factors_[100]; // factorization no order
