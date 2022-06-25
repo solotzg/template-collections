@@ -150,3 +150,6 @@ private:
   const char *label_;
   Clock::time_point start_;
 };
+
+#define SHOW_TIME_COST                                                         \
+  TimeCost __LINE__##time_cost {}

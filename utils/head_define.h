@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <vector>
 
-#define rep(i, a, b) for (int i = (a), __tzg_##i = (b); i < __tzg_##i; ++i)
-#define urp(i, a, b) for (int i = (a), __tzg_##i = (b); i >= __tzg_##i; --i)
+#define rep(i, a, b) for (int i = (a), __tzg_##i = (b); i != __tzg_##i; ++i)
+#define urp(i, a, b) for (int i = (a), __tzg_##i = (b); i != __tzg_##i; --i)
 #define rp(i, b) rep(i, 0, b)
 #define repd(i, a, b) rep(i, a, (b) + 1)
 #define mst(a, b) memset(a, b, sizeof(a))
