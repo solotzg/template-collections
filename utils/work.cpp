@@ -19,6 +19,4 @@ TimeCost::~TimeCost() { Show("END"); }
 
 void TimeCost::Reset() { start_ = Clock::now(); }
 
-TimeCost::Clock::duration TimeCost::Duration() {
-  return start_.time_since_epoch();
-}
+TimeCost::Clock::duration TimeCost::Duration() { return Clock::now() - start_; }
