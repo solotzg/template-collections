@@ -119,12 +119,12 @@ struct Prime {
     Data data_;
   };
 
-  void decompose(T x, Factors &res) {
+  void Decompose(T x, Factors &res) {
     res.clear();
-    decompose(x, [&](T x, size_t cnt) { res.emplace_back(x, cnt); });
+    Decompose(x, [&](T x, size_t cnt) { res.emplace_back(x, cnt); });
   }
 
-  template <typename F> void decompose(T x, F &&f) {
+  template <typename F> void Decompose(T x, F &&f) {
     for (const auto &n : primes_) {
       if (n * n > x)
         break;
@@ -141,9 +141,9 @@ struct Prime {
       f(x, 1);
     }
   }
-  Factors decompose(T x) {
+  Factors Decompose(T x) {
     Factors res;
-    decompose(x, res);
+    Decompose(x, res);
     return res;
   }
 
@@ -211,7 +211,7 @@ static int _prime_tests() {
   auto prime = Prime::GenPrimeWithMaxNum(1e9);
   assert(!Prime::IsPrime(a));
   {
-    auto factors = prime.decompose(a);
+    auto factors = prime.Decompose(a);
     T sum = 1;
     for (const auto &[k, v] : factors) {
       sum *= fast_pow(k, v);
@@ -220,14 +220,14 @@ static int _prime_tests() {
     assert(sum == a);
   }
   {
-    auto factors = prime.decompose(240);
+    auto factors = prime.Decompose(240);
     size_t cnt = 0;
     factors.dfs([&](T p) { cnt += 1; });
     assert(cnt == 20);
   }
   {
     Prime::FactorMap factors;
-    prime.decompose(a, [&](int64_t x, size_t cnt) { factors.add(x, cnt); });
+    prime.Decompose(a, [&](int64_t x, size_t cnt) { factors.add(x, cnt); });
     T sum = 1;
     for (const auto &[k, v] : factors.data()) {
       sum *= fast_pow(k, v);
@@ -236,7 +236,7 @@ static int _prime_tests() {
     assert(sum == a);
   }
   {
-    Prime::FactorMap factors = prime.decompose(a);
+    Prime::FactorMap factors = prime.Decompose(a);
     T sum = 1;
     for (const auto &[k, v] : factors.data()) {
       sum *= fast_pow(k, v);
@@ -250,7 +250,7 @@ static int _prime_tests() {
        a *= prime.primes()[i++])
     ;
   {
-    auto factors = prime.decompose(a);
+    auto factors = prime.Decompose(a);
     T sum = 1;
     for (const auto &[k, v] : factors) {
       sum *= fast_pow(k, v);
