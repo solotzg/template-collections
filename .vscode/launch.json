@@ -33,6 +33,20 @@
             "cwd": "${workspaceFolder}/cmake-build-debug"
         },
         {
+            "type": "lldb",
+            "request": "launch",
+            "name": "ClangTidy",
+            "program": "python3",
+            "args": [
+                "${workspaceFolder}/.vscode/recompile.py",
+                "--file",
+                "${file}",
+                "--type",
+                "tidy",
+            ],
+            "cwd": "${workspaceFolder}/cmake-build-debug"
+        },
+        {
             "name": "Debug",
             "type": "lldb",
             "request": "launch",

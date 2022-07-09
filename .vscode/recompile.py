@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import subprocess
 import sys
 import time
 import logging
@@ -80,11 +81,24 @@ def wrap_run_time(func):
 
 
 @wrap_run_time
-def run_cmd(cmd, show_cmd=True):
+def run_cmd(cmd, show_cmd=False):
+    by_shell = False if not isinstance(cmd, str) else True
     if show_cmd:
-        logger.info("RUN CMD:\n{}\n".format(cmd))
-    res = os.popen(cmd).readlines()
-    return res
+        str_cmd = cmd if by_shell else ' '.join(cmd)
+        logger.info("RUN CMD:\n{}\n".format(str_cmd))
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                            shell=by_shell, stderr=subprocess.PIPE)
+    stdout, stderr = proc.communicate()
+    return stdout, stderr, proc.returncode
+
+
+def run_shell_cmd(cmd, show_cmd=True):
+    stdout, stderr, err = run_cmd(cmd, show_cmd)
+    stdout, stderr = stdout.decode('utf-8'), stderr.decode('utf-8')
+    if err:
+        error_msg = "stdout: `{}`, stderr: `{}`".format(stdout, stderr)
+        raise Exception("{}".format(error_msg))
+    return stdout.split('\n')
 
 
 class Runner:
@@ -121,7 +135,7 @@ class Runner:
             "{}/{}".format(self.repo_path, self.compile_commands_path),
             self.file_path,
         ]
-        res = run_cmd("{} {}".format(cmd, ' '.join(args)), show_cmd=True)
+        res = run_shell_cmd("{} {}".format(cmd, ' '.join(args)), show_cmd=True)
         logger.error(''.join(res))
 
     def run_recompile_syntax(self, syntax_only=True, time_trace=False):
@@ -137,7 +151,7 @@ class Runner:
             logger.info("..")
             logger.info("...")
             logger.info("... Compiling `{}` ...".format(self.file_path))
-            run_cmd(cmd + suffix, )
+            run_shell_cmd(cmd + suffix, )
             logger.info(
                 "... Compilation of '{}' finished ...".format(self.file_path))
             return

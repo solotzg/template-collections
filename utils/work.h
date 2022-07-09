@@ -156,3 +156,9 @@ private:
 #define SHOW_TIME_COST_IMPL(name)                                              \
   TimeCost CONCAT(name, __LINE__) {}
 #define SHOW_TIME_COST SHOW_TIME_COST_IMPL(time_cost)
+
+namespace variant_op {
+template <class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
+template <class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+template <class T> struct always_false : std::false_type {};
+} // namespace variant_op
