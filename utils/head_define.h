@@ -31,3 +31,6 @@ typedef unsigned __int128 UINT128;
 typedef __int128 INT128;
 
 #endif
+
+#define likely(x) __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
