@@ -9,32 +9,122 @@
 #include <unordered_map>
 #include <vector>
 
-template <size_t N = 1000005> struct PrimeForDivide {
-  // N is not very big
-  int mxPrime[N];
-  PrimeForDivide() { init_prime(); }
-  void init_prime() {
-    memset(mxPrime, 0, sizeof mxPrime);
-    for (int i = 2; i < N; ++i) {
-      if (mxPrime[i])
-        continue;
-      for (int j = i; j < N; j += i) {
-        mxPrime[j] = i;
-      }
+template <typename T> struct Factor {
+  T num_;
+  size_t cnt_;
+  Factor(T num, size_t cnt) : num_(num), cnt_(cnt) {}
+};
+
+template <typename T> struct Factors : std::vector<Factor<T>> {
+  template <typename F> void dfs(F &&f) { dfs(0, 1, std::move(f)); }
+  template <typename F> void dfs(size_t pos, T val, F &&f) {
+    if (pos == this->size()) {
+      f(val);
+      return;
+    }
+    for (int i = 0; i <= this->data()[pos].cnt_; ++i) {
+      dfs(pos + 1, val, std::move(f));
+      val *= this->data()[pos].num_;
     }
   }
-  template <typename F> void divide(int x, F &&cb) {
+};
+
+template <typename T> struct FactorMap {
+  using Factors = Factors<T>;
+
+  void add(T num, size_t cnt) { data_[num] += cnt; }
+  FactorMap &operator*=(size_t cnt) {
+    for (auto &e : data_) {
+      e.second *= cnt;
+    }
+    return *this;
+  }
+  FactorMap &operator+=(const FactorMap &tar) {
+    for (const auto &[k, v] : tar.data_) {
+      add(k, v);
+    }
+    return *this;
+  }
+  FactorMap &operator+=(const Factors &tar) {
+    for (const auto &[k, v] : tar) {
+      add(k, v);
+    }
+    return *this;
+  }
+  FactorMap operator+(FactorMap tar) const {
+    FactorMap res = *this;
+    res += tar;
+    return res;
+  }
+  FactorMap() {}
+  FactorMap(Factors tar) {
+    for (const auto &[k, v] : tar) {
+      add(k, v);
+    }
+  }
+
+  std::string show() const {
+    std::stringstream ss;
+    for (const auto &[k, v] : data_) {
+      ss << "(" << k << ":" << v << ")";
+    }
+    return ss.str();
+  }
+
+  using Data = std::unordered_map<T, size_t>;
+
+  Data &data() { return data_; }
+  const Data &data() const { return data_; }
+
+private:
+  Data data_;
+};
+
+template <typename T = int32_t, size_t N = 1000005> struct PrimeForDivide {
+  using Factors = Factors<T>;
+
+  // N is not very big
+  T max_prime[N];
+  PrimeForDivide() { InitPrimes(); }
+
+  template <typename F> void Decompose(T x, F &&cb) {
     while (x > 1) {
-      int j = mxPrime[x], c = 0;
+      T j = max_prime[x];
+      uint32_t c = 0;
       while (x % j == 0)
         x /= j, ++c;
       cb(j, c);
+    }
+  }
+
+  void Decompose(T x, Factors &res) {
+    res.clear();
+    Decompose(x, [&](T x, size_t cnt) { res.emplace_back(x, cnt); });
+  }
+
+  Factors Decompose(T x) {
+    Factors res;
+    Decompose(x, res);
+    return res;
+  }
+
+  void InitPrimes() {
+    std::memset(max_prime, 0, sizeof max_prime);
+    for (size_t i = 2; i < N; ++i) {
+      if (max_prime[i])
+        continue;
+      for (size_t j = i; j < N; j += i) {
+        max_prime[j] = i;
+      }
     }
   }
 };
 
 struct Prime {
   using T = uint64_t;
+  using Factors = Factors<T>;
+  using FactorMap = FactorMap<T>;
+
   static Prime GenPrimeWithMaxNum(T max_num) { return Prime(max_num, 0); }
   static Prime GenPrimeWithMaxLen(T max_len) { return Prime(0, max_len); }
 
@@ -48,76 +138,6 @@ struct Prime {
   }
 
   const std::vector<T> &primes() const { return primes_; }
-
-  struct Factor {
-    T num_;
-    size_t cnt_;
-    Factor(T num, size_t cnt) : num_(num), cnt_(cnt) {}
-  };
-  struct Factors : std::vector<Factor> {
-    template <typename F> void dfs(F &&f) { dfs(0, 1, std::move(f)); }
-
-  private:
-    template <typename F> void dfs(size_t pos, T val, F &&f) {
-      if (pos == size()) {
-        f(val);
-        return;
-      }
-      for (int i = 0; i <= data()[pos].cnt_; ++i) {
-        dfs(pos + 1, val, std::move(f));
-        val *= data()[pos].num_;
-      }
-    }
-  };
-
-  struct FactorMap {
-    void add(T num, size_t cnt) { data_[num] += cnt; }
-    FactorMap &operator*=(size_t cnt) {
-      for (auto &e : data_) {
-        e.second *= cnt;
-      }
-      return *this;
-    }
-    FactorMap &operator+=(const FactorMap &tar) {
-      for (const auto &[k, v] : tar.data_) {
-        add(k, v);
-      }
-      return *this;
-    }
-    FactorMap &operator+=(const Factors &tar) {
-      for (const auto &[k, v] : tar) {
-        add(k, v);
-      }
-      return *this;
-    }
-    FactorMap operator+(FactorMap tar) const {
-      FactorMap res = *this;
-      res += tar;
-      return res;
-    }
-    FactorMap() {}
-    FactorMap(Factors tar) {
-      for (const auto &[k, v] : tar) {
-        add(k, v);
-      }
-    }
-
-    std::string show() const {
-      std::stringstream ss;
-      for (const auto &[k, v] : data_) {
-        ss << "(" << k << ":" << v << ")";
-      }
-      return ss.str();
-    }
-
-    using Data = std::unordered_map<T, size_t>;
-
-    Data &data() { return data_; }
-    const Data &data() const { return data_; }
-
-  private:
-    Data data_;
-  };
 
   void Decompose(T x, Factors &res) {
     res.clear();
@@ -205,7 +225,7 @@ inline uint64_t fast_pow(uint64_t a, uint64_t b) {
   return r;
 }
 
-static int _prime_tests() {
+static int _test_prime_factors() {
   typedef uint64_t T;
   T a = 20100224546;
   auto prime = Prime::GenPrimeWithMaxNum(1e9);
@@ -261,7 +281,7 @@ static int _prime_tests() {
     int x = 656744;
     Prime::FactorMap factors;
     PrimeForDivide p;
-    p.divide(x, [&](int f, int c) { factors.add(f, c); });
+    p.Decompose(x, [&](int f, int c) { factors.add(f, c); });
     int sum = 1;
     for (const auto &[k, v] : factors.data()) {
       sum *= fast_pow(k, v);
