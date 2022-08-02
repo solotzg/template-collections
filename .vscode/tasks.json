@@ -37,5 +37,24 @@
             ],
             "problemMatcher": []
         },
+        {
+            "label": "run-bash",
+            "type": "shell",
+            "command": "${file}",
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
+            "label": "build-run-code-coverage-windows",
+            "type": "shell",
+            "command": "${workspaceFolder}/.vscode/run-code-coverage-windows.sh",
+            "problemMatcher": []
+        },
+        {
+            "label": "build-run-code-coverage",
+            "type": "shell",
+            "command": "${workspaceFolder}/.vscode/run-code-coverage.sh",
+            "problemMatcher": []
+        },
     ]
 }
