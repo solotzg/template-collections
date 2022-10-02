@@ -19,6 +19,8 @@ template <typename T, typename UP> struct OperatorWithModulo {
   }
   static inline void smul_mod(T &a, T b, T mod) { a = mul_mod(a, b, mod); }
   static inline T add_mod(T a, T b, T mod) {
+    assert(a < mod);
+    assert(b < mod);
     if constexpr (std::numeric_limits<T>::min() != 0)
       return (a += b) >= mod ? a - mod : (a < 0 ? a + mod : a);
     else
