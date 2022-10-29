@@ -136,6 +136,16 @@
       (PANIC(__VA_ARGS__))(std::terminate());                                  \
     }                                                                          \
   } while (false)
+#define ASSERT_EQ(expr1, expr2, ...)                                           \
+  do {                                                                         \
+    auto &&r1 = (expr1);                                                       \
+    auto &&r2 = (expr2);                                                       \
+    if (r1 != r2) {                                                            \
+      MSGLN("`" << r1 << "` != `" << r2 << "`");                               \
+      IF_ELSE(HAS_ARGS(__VA_ARGS__))                                           \
+      (PANIC(__VA_ARGS__))(std::terminate());                                  \
+    }                                                                          \
+  } while (false)
 
 struct TimeCost {
   using Clock = std::chrono::steady_clock;
