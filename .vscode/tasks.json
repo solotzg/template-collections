@@ -56,5 +56,92 @@
             "command": "${workspaceFolder}/.vscode/run-code-coverage.sh",
             "problemMatcher": []
         },
+        {
+            "label": "Tidy",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/.vscode/recompile.py",
+                "--file",
+                "${file}",
+                "--type",
+                "tidy",
+                "--work-dir",
+                "${workspaceFolder}/cmake-build-debug",
+                "--clang-tidy-path",
+                "clang-tidy"
+            ],
+            "problemMatcher": [],
+        },
+        {
+            "label": "Recompile",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/.vscode/recompile.py",
+                "--file",
+                "${file}",
+                "--type",
+                "build",
+                "--work-dir",
+                "${workspaceFolder}/cmake-build-debug",
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "Objdump",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/.vscode/recompile.py",
+                "--file",
+                "${file}",
+                "--type",
+                "objdump",
+                "--work-dir",
+                "${workspaceFolder}/cmake-build-debug",
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "ReleaseBuild-Recompile",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/.vscode/recompile.py",
+                "--file",
+                "${file}",
+                "--type",
+                "build",
+                "--work-dir",
+                "${workspaceFolder}/cmake-build-debug",
+                "--release-build"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "ReleaseBuild-Recompile-Objdump",
+            "dependsOrder": "sequence",
+            "problemMatcher": [],
+            "dependsOn": [
+                "ReleaseBuild-Recompile",
+                "Objdump"
+            ]
+        },
+        {
+            "label": "CheckSyntax",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/.vscode/recompile.py",
+                "--file",
+                "${file}",
+                "--type",
+                "syntax",
+                "--work-dir",
+                "${workspaceFolder}/cmake-build-debug",
+            ],
+            "problemMatcher": []
+        },
     ]
 }
