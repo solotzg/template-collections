@@ -1,12 +1,15 @@
 #!/usr/bin/python3
 import argparse
-import json
 import os
 import subprocess
 import sys
 import time
 import logging
 import types
+try:
+    import orjson as json
+except ImportError:
+    import json as json
 
 logger = None
 
@@ -116,8 +119,8 @@ class Runner:
         self.args = parser.parse_args()
         self.work_dir = self.args.work_dir
         os.chdir(self.work_dir)
-        self.compile_commands_set = json.load(
-            open("{}/{}".format(self.work_dir, self.compile_commands_path), "r"))
+        with open("{}/{}".format(self.work_dir, self.compile_commands_path), "r") as f:
+            self.compile_commands_set = json.loads(f.read())
 
     def run(self):
         if self.args.type == 'syntax':
@@ -166,7 +169,7 @@ class Runner:
             self.work_dir.replace('/', '.'),
             obj_file.replace('/', '.')
         )
-        cmd = "objdump -C -d {}/{} > {}".format(
+        cmd = "objdump -C -r -d {}/{} > {}".format(
             self.work_dir, obj_file, saved_file)
 
         logger.info(".")
@@ -194,7 +197,6 @@ class Runner:
             cmd = cmd.replace("-fprofile-instr-generate", "")
             cmd = cmd.replace("-fcoverage-mapping", "")
 
-        cmd: str = self.find_compile_block(self.args.file).get("command")
         logger.info(".")
         logger.info("..")
         logger.info("...")
@@ -211,7 +213,7 @@ def main():
     try:
         Runner().run()
     except Exception as e:
-        logger.error(e)
+        logger.error(e, exc_info=True)
         exit(-1)
 
 
