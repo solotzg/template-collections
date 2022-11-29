@@ -8,7 +8,8 @@ struct Timer : BasicConfig {
   using Delay = std::chrono::milliseconds;
 
   struct Task : MutexLockWrap {
-    using Func = std::function<void(bool)>;
+    using Func =
+        std::function<void(bool)>; // if triggered because of Timer is stopping
     Task(Func &&task) : task_(std::move(task)) {}
 
     bool Run(bool stop) {
@@ -59,6 +60,11 @@ struct Timer : BasicConfig {
     template <typename... _Args> void Add(_Args &&...__args) {
       auto _ = GenLockGuard();
       queue_.emplace(std::forward<_Args>(__args)...);
+    }
+
+    bool Empty() const {
+      auto _ = GenLockGuard();
+      return queue_.empty();
     }
 
     template <typename F>
@@ -115,7 +121,8 @@ struct Timer : BasicConfig {
     }
     assert(stop_);
     queue_.Run([&](Node &&node) { node.task_->Run(true /*stop task*/); },
-               TimePoint{} /*always expire*/);
+               TimePoint::max() /*always expire*/);
+    assert(queue_.Empty());
   }
 
   size_t RunOneRound() {
