@@ -56,3 +56,5 @@ llvm-cov export ${WORKSPACE_FOLDER}/cmake-build-debug/CPPTest --format=lcov \
 
 mkdir -p ${REPORT_DIR}
 genhtml ${PROFILE_DIR}/lcov.info -o ${REPORT_DIR} --ignore-errors source
+cd ${REPORT_DIR}
+python3 -m http.server 8888

@@ -195,6 +195,7 @@ static void _test_timer() {
     std::this_thread::sleep_for(delay);
     assert(flag == false);
     assert(cancel_case->Cancel());
+    assert(!cancel_case->Cancel());
     assert(timer.RunOneRound() == 2);
     assert(!cancel_test);
     assert(flag == true);
