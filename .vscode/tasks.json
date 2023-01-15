@@ -137,5 +137,16 @@
             ],
             "problemMatcher": []
         },
+        {
+            "label": "IWYU",
+            "type": "shell",
+            "command": "iwyu_tool.py",
+            "args": [
+                "-p",
+                "${workspaceFolder}/cmake-build-debug",
+                "${file}",
+            ],
+            "problemMatcher": []
+        },
     ]
 }
