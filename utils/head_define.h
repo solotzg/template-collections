@@ -41,3 +41,12 @@ typedef __int128 INT128;
 
 #define FLATTEN_INLINE_PURE static __attribute__((flatten, always_inline, pure))
 #define ALWAYS_INLINE static __attribute__((always_inline))
+
+#ifndef NDEBUG
+#define DECLARE_DEBUG_TEST_CODE(...)                                           \
+  namespace tests {                                                            \
+  __VA_ARGS__                                                                  \
+  }
+#else
+#define DECLARE_DEBUG_TEST_CODE(...)
+#endif

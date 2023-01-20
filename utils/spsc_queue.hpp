@@ -172,9 +172,7 @@ private:
   Buff buff_;
 };
 
-#ifndef NDEBUG
-
-static void _test_spsc_queue() {
+DECLARE_DEBUG_TEST_CODE(static void _test_spsc_queue() {
   static_assert(alignof(SPSCQueue<void *>) == 64);
   {
     SPSCQueue<uint8_t> s(1);
@@ -283,6 +281,4 @@ static void _test_spsc_queue() {
       assert(cnt == 0);
     }
   }
-}
-
-#endif
+})

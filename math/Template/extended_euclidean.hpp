@@ -1,4 +1,6 @@
-﻿static int64_t extend_gcd(int64_t a, int64_t b, int64_t &x, int64_t &y) {
+﻿#include "utils/head_define.h"
+
+static int64_t extend_gcd(int64_t a, int64_t b, int64_t &x, int64_t &y) {
   if (b == 0) {
     x = 1;
     y = 0;
@@ -19,11 +21,9 @@ static int64_t inverse(int64_t a, int64_t mod) {
   return x;
 }
 
-#ifndef NDEBUG
-
-// http://www.cnblogs.com/frog112111/archive/2012/08/19/2646012.html
-// http://www.cnblogs.com/void/archive/2011/04/18/2020357.html
-static int _test_extend_gcd() {
+DECLARE_DEBUG_TEST_CODE(static int _test_extend_gcd() {
+  // http://www.cnblogs.com/frog112111/archive/2012/08/19/2646012.html
+  // http://www.cnblogs.com/void/archive/2011/04/18/2020357.html
   {
     // inverse
     assert(inverse(2, 5) == 3);
@@ -44,6 +44,4 @@ static int _test_extend_gcd() {
     assert(a * (x * c / r) + b * (y * c / r) == c);
   }
   return 0;
-}
-
-#endif
+})

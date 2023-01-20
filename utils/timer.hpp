@@ -1,6 +1,10 @@
 #pragma once
 
+#include "head_template.h"
 #include "utils.hpp"
+#include <optional>
+#include <queue>
+#include <thread>
 
 struct Timer : BasicConfig {
   using Clock = std::chrono::steady_clock;
@@ -169,9 +173,7 @@ private:
   std::unique_ptr<std::thread> context_;
 };
 
-#ifndef NDEBUG
-
-static void _test_timer() {
+DECLARE_DEBUG_TEST_CODE(static void _test_timer() {
   {
     Timer timer;
 
@@ -181,14 +183,14 @@ static void _test_timer() {
     Timer::Delay delay{50};
     timer.Schedule(
         [&](bool stop) {
-          assert(!stop);
-          flag = true;
+  assert(!stop);
+  flag = true;
         },
         delay);
     auto cancel_case = timer.Schedule(
         [&](bool stop) {
-          assert(!stop);
-          cancel_test = true;
+  assert(!stop);
+  cancel_test = true;
         },
         delay);
     assert(flag == false);
@@ -199,59 +201,57 @@ static void _test_timer() {
     assert(timer.RunOneRound() == 2);
     assert(!cancel_test);
     assert(flag == true);
-  }
-  {
-    Timer timer;
-
-    timer.AsyncRun();
-    auto old = Timer::Clock::now();
-    auto check = old;
-    Notifier notifier;
-    Timer::Delay delay(123);
-    timer.Schedule(
-        [&](bool stop) {
-          check = Timer::Clock::now();
-          notifier.Wake();
-          assert(!stop);
-        },
-        delay);
-    notifier.BlockedWaitFor(std::chrono::milliseconds(10000));
-    assert((check - old) >= delay);
-    timer.Schedule([](bool stop) { assert(stop); }, Timer::Delay(1000 * 3600));
-    timer.StopAndWait();
-    timer.Schedule([](bool stop) { assert(stop); }, Timer::Delay(1000 * 3600));
-  }
-  {
-    Timer timer;
-
-    timer.AsyncRun();
-    struct Test : MutexLockWrap {
-      void Add(int x) {
-        auto _ = GenLockGuard();
-        res.emplace_back(x);
-      }
-      std::vector<int> res;
-    } tests;
-    const int test_cnt = 10;
-    std::atomic_int cnt = test_cnt;
-    Notifier notifier;
-    for (int i = 0; i < test_cnt; ++i) {
-      timer.Schedule(
-          [&, i](bool stop) {
-            assert(!stop);
-            tests.Add(i);
-            if (--cnt == 0) {
-              notifier.Wake();
-            }
-          },
-          Timer::Delay(200 - i * test_cnt));
-    }
-    notifier.BlockedWaitFor(std::chrono::milliseconds{3600 * 1000});
-    for (int i = 0; i < test_cnt; ++i) {
-      assert(tests.res[i] == (test_cnt - 1 - i));
-    }
-    timer.Stop();
-  }
 }
+{
+  Timer timer;
 
-#endif
+  timer.AsyncRun();
+  auto old = Timer::Clock::now();
+  auto check = old;
+  Notifier notifier;
+  Timer::Delay delay(123);
+  timer.Schedule(
+      [&](bool stop) {
+        check = Timer::Clock::now();
+        notifier.Wake();
+        assert(!stop);
+      },
+      delay);
+  notifier.BlockedWaitFor(std::chrono::milliseconds(10000));
+  assert((check - old) >= delay);
+  timer.Schedule([](bool stop) { assert(stop); }, Timer::Delay(1000 * 3600));
+  timer.StopAndWait();
+  timer.Schedule([](bool stop) { assert(stop); }, Timer::Delay(1000 * 3600));
+}
+{
+  Timer timer;
+
+  timer.AsyncRun();
+  struct Test : MutexLockWrap {
+    void Add(int x) {
+      auto _ = GenLockGuard();
+      res.emplace_back(x);
+    }
+    std::vector<int> res;
+  } tests;
+  const int test_cnt = 10;
+  std::atomic_int cnt = test_cnt;
+  Notifier notifier;
+  for (int i = 0; i < test_cnt; ++i) {
+    timer.Schedule(
+        [&, i](bool stop) {
+          assert(!stop);
+          tests.Add(i);
+          if (--cnt == 0) {
+            notifier.Wake();
+          }
+        },
+        Timer::Delay(200 - i * test_cnt));
+  }
+  notifier.BlockedWaitFor(std::chrono::milliseconds{3600 * 1000});
+  for (int i = 0; i < test_cnt; ++i) {
+    assert(tests.res[i] == (test_cnt - 1 - i));
+  }
+  timer.Stop();
+}
+})

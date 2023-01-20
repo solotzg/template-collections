@@ -10,6 +10,8 @@
 #include <chrono>
 #include <cstddef>
 #include <limits>
+#include <numeric>
+#include <set>
 #include <unordered_map>
 #include <utility>
 
@@ -140,47 +142,39 @@ private:
   SPSCQueueType *spsc_queues_;
 };
 
-#ifndef NDEBUG
-
-static void _test_mpsc_queue() {
+DECLARE_DEBUG_TEST_CODE(static void _test_mpsc_queue() {
+  MPSCWorker<int> mpsc({{2, 3, 1}, {3, 1, 1}});
+  //
+  assert(mpsc.Put(1, 0));
+  assert(mpsc.Put(2, 1));
+  assert(mpsc.Put(3, 2));
+  assert(mpsc.Put(4, 1));
+  assert(mpsc.Put(5, 1));
+  assert(!mpsc.Put(6, 1));
+  assert(mpsc.Put<Priority::Low>(6, 1024));
   {
-    MPSCWorker<int> mpsc({{2, 3, 1}, {3, 1, 1}});
-    //
-    assert(mpsc.Put(1, 0));
-    assert(mpsc.Put(2, 1));
-    assert(mpsc.Put(3, 2));
-    assert(mpsc.Put(4, 1));
-    assert(mpsc.Put(5, 1));
-    assert(!mpsc.Put(6, 1));
-    assert(mpsc.Put<Priority::Low>(6, 1024));
-    {
-      auto ex = -1;
-      auto r = mpsc.GenCustomer().Consume([&](int x) { ex = x; }, {1});
-      assert(std::accumulate(r.begin(), r.end(), 0) == 1);
-      assert(ex == 1);
-    }
-
-    {
-      std::set<int> data;
-      auto r = mpsc.GenCustomer().Consume(
-          [&](int x) { data.emplace(x); },
-          {0, 0, std ::numeric_limits<size_t>::max()});
-      assert((r == MPSCCntNode{0, 0, 1}));
-      assert(data == std::set<int>{6});
-    }
-
-    {
-      std::vector<int> data;
-      auto r =
-          mpsc.GenCustomer().Consume([&](int x) { data.emplace_back(x); },
-                                     {std ::numeric_limits<size_t>::max(),
-                                      std ::numeric_limits<size_t>::max(),
-                                      std ::numeric_limits<size_t>::max()});
-      assert((r == MPSCCntNode{4, 0, 0}));
-      assert((data == std::vector{3, 2, 4, 5}));
-    }
-    {}
+    auto ex = -1;
+    auto r = mpsc.GenCustomer().Consume([&](int x) { ex = x; }, {1});
+    assert(std::accumulate(r.begin(), r.end(), 0) == 1);
+    assert(ex == 1);
   }
-}
 
-#endif
+  {
+    std::set<int> data;
+    auto r =
+        mpsc.GenCustomer().Consume([&](int x) { data.emplace(x); },
+                                   {0, 0, std ::numeric_limits<size_t>::max()});
+    assert((r == MPSCCntNode{0, 0, 1}));
+    assert(data == std::set<int>{6});
+  }
+
+  {
+    std::vector<int> data;
+    auto r = mpsc.GenCustomer().Consume([&](int x) { data.emplace_back(x); },
+                                        {std ::numeric_limits<size_t>::max(),
+                                         std ::numeric_limits<size_t>::max(),
+                                         std ::numeric_limits<size_t>::max()});
+    assert((r == MPSCCntNode{4, 0, 0}));
+    assert((data == std::vector{3, 2, 4, 5}));
+  }
+})

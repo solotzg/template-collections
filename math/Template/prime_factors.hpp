@@ -1,5 +1,6 @@
 #pragma once
 
+#include "utils/head_define.h"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -225,7 +226,7 @@ inline uint64_t fast_pow(uint64_t a, uint64_t b) {
   return r;
 }
 
-static int _test_prime_factors() {
+DECLARE_DEBUG_TEST_CODE(static int _test_prime_factors() {
   typedef uint64_t T;
   T a = 20100224546;
   auto prime = Prime::GenPrimeWithMaxNum(1e9);
@@ -289,4 +290,4 @@ static int _test_prime_factors() {
     assert(sum == x);
   }
   return 0;
-}
+})

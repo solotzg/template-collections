@@ -1,5 +1,6 @@
 #pragma once
 
+#include "utils/head_define.h"
 #include <cassert>
 #include <vector>
 
@@ -35,8 +36,7 @@ private:
   std::vector<int> phi_, prime_;
 };
 
-#ifndef NDEBUG
-static void _test_euler_function() {
+DECLARE_DEBUG_TEST_CODE(static void _test_euler_function() {
   EulerFunction euler_function;
   euler_function.init(10);
   assert((euler_function.prime() == std::vector{2, 3, 5, 7}));
@@ -47,5 +47,4 @@ static void _test_euler_function() {
   }
   d.emplace_back(1);
   assert((d == std::vector{7, 6, 2, 1}));
-}
-#endif
+})

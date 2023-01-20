@@ -1,6 +1,7 @@
 #pragma once
 
 #include "head_define.h"
+#include <sstream>
 
 template <typename T, typename UP> struct OperatorWithModulo {
   static inline T mul_mod(T a, T b, T mod) {
