@@ -148,5 +148,11 @@
             ],
             "problemMatcher": []
         },
+        {
+            "label": "FMT",
+            "type": "shell",
+            "command": ".vscode/format-diff.py",
+            "problemMatcher": []
+        },
     ]
 }
