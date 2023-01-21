@@ -1,33 +1,20 @@
 #!/usr/bin/python3
-# Copyright 2022 PingCAP, Ltd.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 import argparse
 import os
 import subprocess
-from os import path
-import json
-
 from inner_utils import *
+
+REPO_DIR = os.path.realpath(os.path.join(
+    os.path.join(__file__, os.pardir), os.pardir))
 
 
 def main():
     default_suffix = ['.cpp', '.h', '.cc', '.hpp']
     parser = argparse.ArgumentParser(description='Code Format',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--repo_path', help='path of repository',
-                        default=path.realpath(path.join(__file__, '../..')))
+    parser.add_argument(
+        '--repo_path', help='path of repository', default=REPO_DIR)
     parser.add_argument('--suffix',
                         help='suffix of files to format, split by space', default=' '.join(default_suffix))
     parser.add_argument('--ignore_suffix',
@@ -57,23 +44,24 @@ def main():
         if any([f.endswith(e) for e in ignore_suffix]):
             continue
         file_path = f
-        if not path.exists(file_path):
+        if not os.path.exists(file_path):
             continue
         if ' ' in file_path:
-            print('file {} can not be formatted'.format(file_path))
+            logger.warn('file {} can not be formatted'.format(file_path))
             continue
         files_to_format.append(file_path)
 
     if files_to_format:
-        print('Files to format:\n  {}'.format('\n  '.join(files_to_format)))
+        logger.info('Files to format:\n  {}\n'.format(
+            '\n  '.join(files_to_format)))
         for file in files_to_format:
             cmd = 'clang-format -i {}'.format(file)
             if subprocess.Popen(cmd, shell=True, cwd=repo_path).wait():
                 exit(-1)
 
-        print("Finish code format")
+        logger.info("Finish code format")
     else:
-        print('No file to format')
+        logger.info('No file to format')
 
 
 if __name__ == '__main__':
