@@ -9,6 +9,15 @@
             "dependsOn": [],
         },
         {
+            "label": "build-run",
+            "type": "shell",
+            "command": "${workspaceFolder}/.vscode/run-debug.sh",
+            "problemMatcher": [],
+            "dependsOn": [
+                "build"
+            ],
+        },
+        {
             "label": "release_build",
             "type": "shell",
             "command": "${workspaceFolder}/.vscode/build-release.sh",
