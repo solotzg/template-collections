@@ -2,56 +2,43 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "reload-cmake",
-            "type": "shell",
-            "command": "${workspaceFolder}/.vscode/cmake-debug.sh",
-            "args": [],
-            "problemMatcher": []
-        },
-        {
-            "label": "clean-cmake-build",
-            "type": "shell",
-            "command": "rm -rf ${workspaceFolder}/cmake-build-debug",
-            "args": [],
-            "problemMatcher": []
-        },
-        {
             "label": "build",
             "type": "shell",
-            "command": "cd ${workspaceFolder}/cmake-build-debug && cmake --build . --parallel",
-            "problemMatcher": []
+            "command": "${workspaceFolder}/.vscode/build-debug.sh",
+            "problemMatcher": [],
+            "dependsOn": [],
         },
         {
-            "label": "release-build",
+            "label": "release_build",
             "type": "shell",
             "command": "${workspaceFolder}/.vscode/build-release.sh",
             "problemMatcher": []
         },
         {
-            "label": "release-build-run",
+            "label": "release_build-run",
             "type": "shell",
-            "command": "cd ${workspaceFolder}/cmake-build-release && ./CPPTest",
+            "command": "${workspaceFolder}/.vscode/run-release.sh",
             "dependsOrder": "sequence",
             "dependsOn": [
-                "release-build",
+                "release_build",
             ],
             "problemMatcher": []
         },
         {
-            "label": "run-bash",
+            "label": "run_bash",
             "type": "shell",
             "command": "${file}",
             "dependsOrder": "sequence",
             "problemMatcher": []
         },
         {
-            "label": "build-run-code-coverage",
+            "label": "build_run_code_coverage",
             "type": "shell",
             "command": "${workspaceFolder}/.vscode/run-code-coverage.sh",
             "problemMatcher": []
         },
         {
-            "label": "Tidy",
+            "label": "tidy",
             "type": "shell",
             "command": "python3",
             "args": [
@@ -65,10 +52,10 @@
                 "--clang-tidy-path",
                 "clang-tidy"
             ],
-            "problemMatcher": [],
+            "problemMatcher": []
         },
         {
-            "label": "Recompile",
+            "label": "recompile",
             "type": "shell",
             "command": "python3",
             "args": [
@@ -78,12 +65,12 @@
                 "--type",
                 "build",
                 "--work-dir",
-                "${workspaceFolder}/cmake-build-debug",
+                "${workspaceFolder}/cmake-build-debug"
             ],
             "problemMatcher": []
         },
         {
-            "label": "Objdump",
+            "label": "release_objdump",
             "type": "shell",
             "command": "python3",
             "args": [
@@ -93,12 +80,27 @@
                 "--type",
                 "objdump",
                 "--work-dir",
-                "${workspaceFolder}/cmake-build-debug",
+                "${workspaceFolder}/cmake-build-release"
             ],
             "problemMatcher": []
         },
         {
-            "label": "ReleaseBuild-Recompile",
+            "label": "debug_objdump",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/.vscode/recompile.py",
+                "--file",
+                "${file}",
+                "--type",
+                "objdump",
+                "--work-dir",
+                "${workspaceFolder}/cmake-build-debug"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "force_release_recompile",
             "type": "shell",
             "command": "python3",
             "args": [
@@ -114,16 +116,16 @@
             "problemMatcher": []
         },
         {
-            "label": "ReleaseBuild-Recompile-Objdump",
+            "label": "force_release_recompile-objdump",
             "dependsOrder": "sequence",
             "problemMatcher": [],
             "dependsOn": [
-                "ReleaseBuild-Recompile",
-                "Objdump"
+                "force_release_recompile",
+                "debug_objdump"
             ]
         },
         {
-            "label": "CheckSyntax",
+            "label": "check_syntax",
             "type": "shell",
             "command": "python3",
             "args": [
@@ -133,26 +135,26 @@
                 "--type",
                 "syntax",
                 "--work-dir",
-                "${workspaceFolder}/cmake-build-debug",
+                "${workspaceFolder}/cmake-build-debug"
             ],
             "problemMatcher": []
         },
         {
-            "label": "IWYU",
+            "label": "iwyu",
             "type": "shell",
             "command": "iwyu_tool.py",
             "args": [
                 "-p",
                 "${workspaceFolder}/cmake-build-debug",
-                "${file}",
+                "${file}"
             ],
             "problemMatcher": []
         },
         {
-            "label": "FMT",
+            "label": "fmt",
             "type": "shell",
             "command": ".vscode/format-diff.py",
             "problemMatcher": []
-        },
+        }
     ]
 }
