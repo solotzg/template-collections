@@ -40,10 +40,6 @@ function(add_target_pch context target)
 endfunction()
 
 option (ENABLE_PCH "Enable `Precompiled header`" ON)
-if (OS_DARWIN AND ARCH_ARM)
-    message (STATUS "Disable `Precompiled header` for ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCESSOR}")
-    set (ENABLE_PCH OFF)
-endif ()
 
 # CCACHE
 option (USE_CCACHE "Set to OFF to disable ccache" OFF)
