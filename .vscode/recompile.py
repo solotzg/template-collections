@@ -16,7 +16,7 @@ class Runner:
         parser.add_argument(
             '--file', help='absolute path of file to compile', required=True)
         parser.add_argument(
-            '--type', help='build type', required=True, choices=('syntax', 'tidy', 'build', 'objdump'))
+            '--type', help='build type', required=True, choices=('syntax', 'tidy', 'build', 'objdump', 'preprocess'))
         parser.add_argument(
             '--time-trace', help='enable time trace, will generate json profile', action="store_true",)
         parser.add_argument(
@@ -40,6 +40,8 @@ class Runner:
             self.run_recompile(False,)
         elif self.args.type == 'objdump':
             self.run_objdump()
+        elif self.args.type == 'preprocess':
+            self.run_recompile(False, True)
         else:
             exit(-1)
 
@@ -63,8 +65,11 @@ class Runner:
         raise Exception("{} not found in {}".format(
             file_path, self.compile_commands_path))
 
-    def run_objdump(self):
-        cmd: str = self.find_compile_block(self.args.file).get("command")
+    def get_obj_file_path(self, file, ):
+        cmd: str = self.find_compile_block(file).get("command")
+        return self.get_obj_file_path_by_cmd(cmd)
+
+    def get_obj_file_path_by_cmd(self, cmd: str):
         cmd: list = cmd.split(' ')
         obj_index = cmd.index('-o')
         obj_file = None
@@ -73,13 +78,14 @@ class Runner:
                 obj_file = cmd[i]
                 break
         assert obj_file.endswith(".o")
+        return os.path.join(self.work_dir, obj_file)
 
-        saved_file = "/tmp/.tzg_objdump_{}.{}.txt".format(
-            self.work_dir.replace('/', '.'),
+    def run_objdump(self):
+        obj_file = self.get_obj_file_path(self.args.file)
+        saved_file = "/tmp/.tzg_objdump_{}.txt".format(
             obj_file.replace('/', '.')
         )
-        cmd = "objdump -C -r -d {}/{} > {}".format(
-            self.work_dir, obj_file, saved_file)
+        cmd = "objdump -C -r -d {} > {}".format(obj_file, saved_file)
 
         logger.info(".")
         logger.info("..")
@@ -94,10 +100,12 @@ class Runner:
         logger.info(
             "... Please open file: `{}`".format(saved_file))
 
-    def run_recompile(self, syntax_only=True, ):
+    def run_recompile(self, syntax_only, preprocess=False, ):
         suffix = " -fsyntax-only" if syntax_only else ""
         if self.args.time_trace:
             suffix += ' -ftime-trace'
+        if preprocess:
+            suffix += ' -E'
 
         cmd: str = self.find_compile_block(self.args.file).get("command")
 
@@ -116,6 +124,8 @@ class Runner:
             exit(-1)
         logger.info(
             "... Compilation of '{}' finished ...".format(self.args.file))
+        logger.info(
+            "... Object file: `{}`".format(self.get_obj_file_path_by_cmd(cmd)))
 
 
 def main():

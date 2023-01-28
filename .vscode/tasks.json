@@ -149,6 +149,21 @@
             "problemMatcher": []
         },
         {
+            "label": "preprocess",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/.vscode/recompile.py",
+                "--file",
+                "${file}",
+                "--type",
+                "preprocess",
+                "--work-dir",
+                "${workspaceFolder}/cmake-build-debug"
+            ],
+            "problemMatcher": []
+        },
+        {
             "label": "iwyu",
             "type": "shell",
             "command": "iwyu_tool.py",
