@@ -6,13 +6,12 @@ TimeCost::TimeCost(const char *label) : label_(label), start_(Clock::now()) {}
 void TimeCost::Show(const char *prefix) const {
   auto end = Clock::now();
 
-  MSG("[" << label_ << "]");
+  FMSG("[%s]", label_);
   if (prefix)
-    MSG("[" << prefix << "]");
-  MSGLN("[time cost: " << std::chrono::duration_cast<std::chrono::milliseconds>(
-                              end - start_)
-                              .count()
-                       << "ms]");
+    FMSG("[%s]", prefix);
+  FMSGLN("[time cost: %ldms]",
+         std::chrono::duration_cast<std::chrono::milliseconds>(end - start_)
+             .count());
 }
 
 TimeCost::~TimeCost() { Show("END"); }

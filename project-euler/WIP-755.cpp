@@ -27,7 +27,7 @@ struct Solve {
     int64_t ss = 0;
     for (int64_t m = mm; m <= mm; ++m) {
       auto k = dfs(m, fibo.size() - 1);
-      MSG(k << " ");
+      MSG(k);
       ss += k;
     }
     MSGLN("");

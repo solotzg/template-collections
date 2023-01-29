@@ -94,7 +94,7 @@
 #include "head_template.h"
 #include "scope_guard.h"
 
-#define CAT(a, b) a##b
+#define CAT(a, b) CONCAT(a, b)
 #define FIRST(first, ...) first
 #define SECOND(first, second, ...) second
 #define IS_PROBE(...) SECOND(__VA_ARGS__, 0)
@@ -104,6 +104,7 @@
 #define BOOL(x) NOT(NOT(x))
 #define HAS_ARGS(...) BOOL(FIRST(_END_OF_ARGUMENTS_ __VA_ARGS__)())
 #define _END_OF_ARGUMENTS_() 0
+#define _DO_NOTHING(...)
 
 #define IF_ELSE(condition) _IF_ELSE(BOOL(condition))
 #define _IF_ELSE(condition) CAT(_IF_, condition)
@@ -111,17 +112,26 @@
 #define _IF_0(...) _IF_0_ELSE
 #define _IF_1_ELSE(...)
 #define _IF_0_ELSE(...) __VA_ARGS__
-
 #define _GET_FIRST_ARG(arg, ...) arg
 
-#define _MSG_IMPL(s)                                                           \
+static inline void PrintMessage() {}
+template <typename T, typename... Args>
+void PrintMessage(T arg1, Args &&...rest_args) {
+  std::cout << arg1 << ' ';
+  PrintMessage(std::forward<Args>(rest_args)...);
+}
+#define MSG(...) PrintMessage(__VA_ARGS__)
+#define MSGLN(...)                                                             \
   do {                                                                         \
-    std::cout << s;                                                            \
+    MSG(__VA_ARGS__);                                                          \
+    std::cout << std::endl;                                                    \
   } while (false)
-
-#define MSGLN(s) _MSG_IMPL(s << std::endl)
-
-#define MSG(s) _MSG_IMPL(s)
+#define FMSG(...) printf(__VA_ARGS__)
+#define FMSGLN(...)                                                            \
+  do {                                                                         \
+    FMSG(__VA_ARGS__);                                                         \
+    std::cout << std::endl;                                                    \
+  } while (false)
 
 #define PANIC(...)                                                             \
   do {                                                                         \
