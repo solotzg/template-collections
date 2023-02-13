@@ -44,6 +44,7 @@ llvm-cov \
     --ignore-filename-regex '/usr/local/.*' \
     --ignore-filename-regex '/usr/lib/.*' \
     --ignore-filename-regex './cmake-build*' \
+    --ignore-filename-regex './contrib/*' \
     >${PROFILE_DIR}/lcov.info
 
 mkdir -p ${REPORT_DIR}
