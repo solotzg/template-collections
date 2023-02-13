@@ -6,7 +6,7 @@
             "type": "shell",
             "command": "${workspaceFolder}/.vscode/build-debug.sh",
             "problemMatcher": [],
-            "dependsOn": [],
+            "dependsOn": []
         },
         {
             "label": "build-run",
@@ -15,7 +15,7 @@
             "problemMatcher": [],
             "dependsOn": [
                 "build"
-            ],
+            ]
         },
         {
             "label": "release_build",
@@ -29,7 +29,7 @@
             "command": "${workspaceFolder}/.vscode/run-release.sh",
             "dependsOrder": "sequence",
             "dependsOn": [
-                "release_build",
+                "release_build"
             ],
             "problemMatcher": []
         },
@@ -79,6 +79,21 @@
             "problemMatcher": []
         },
         {
+            "label": "release_recompile",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/.vscode/recompile.py",
+                "--file",
+                "${file}",
+                "--type",
+                "build",
+                "--work-dir",
+                "${workspaceFolder}/cmake-build-release"
+            ],
+            "problemMatcher": []
+        },
+        {
             "label": "release_objdump",
             "type": "shell",
             "command": "python3",
@@ -107,6 +122,24 @@
                 "${workspaceFolder}/cmake-build-debug"
             ],
             "problemMatcher": []
+        },
+        {
+            "label": "recompile-debug_objdump",
+            "problemMatcher": [],
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "recompile",
+                "debug_objdump"
+            ]
+        },
+        {
+            "label": "release-recompile-objdump",
+            "problemMatcher": [],
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "release_recompile",
+                "release_objdump"
+            ]
         },
         {
             "label": "force_release_recompile",
