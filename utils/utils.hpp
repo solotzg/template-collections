@@ -107,5 +107,19 @@ private:
   mutable std::condition_variable cv_;
   // multi notifiers single receiver model. use another flag to avoid waiting
   // endlessly.
-  mutable std::atomic_bool wait_flag_{false};
+  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) mutable std::atomic_bool wait_flag_{
+      false};
 };
+
+static uint32_t NextPow2(uint32_t v) {
+  ASSERT_GT(v, 0);
+  ASSERT_LE(v, 1u << 31);
+  v--;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v |= v >> 8;
+  v |= v >> 16;
+  v++;
+  return v;
+}

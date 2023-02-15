@@ -94,69 +94,6 @@
 #include "head_template.h"
 #include "scope_guard.h"
 
-#define CAT(a, b) CONCAT(a, b)
-#define FIRST(first, ...) first
-#define SECOND(first, second, ...) second
-#define IS_PROBE(...) SECOND(__VA_ARGS__, 0)
-#define PROBE() ~, 1
-#define NOT(x) IS_PROBE(CAT(_NOT_, x))
-#define _NOT_0 PROBE()
-#define BOOL(x) NOT(NOT(x))
-#define HAS_ARGS(...) BOOL(FIRST(_END_OF_ARGUMENTS_ __VA_ARGS__)())
-#define _END_OF_ARGUMENTS_() 0
-#define _DO_NOTHING(...)
-
-#define IF_ELSE(condition) _IF_ELSE(BOOL(condition))
-#define _IF_ELSE(condition) CAT(_IF_, condition)
-#define _IF_1(...) __VA_ARGS__ _IF_1_ELSE
-#define _IF_0(...) _IF_0_ELSE
-#define _IF_1_ELSE(...)
-#define _IF_0_ELSE(...) __VA_ARGS__
-#define _GET_FIRST_ARG(arg, ...) arg
-
-static inline void PrintMessage() {}
-template <typename T, typename... Args>
-void PrintMessage(T arg1, Args &&...rest_args) {
-  std::cout << arg1 << ' ';
-  PrintMessage(std::forward<Args>(rest_args)...);
-}
-#define MSG(...) PrintMessage(__VA_ARGS__)
-#define MSGLN(...)                                                             \
-  do {                                                                         \
-    MSG(__VA_ARGS__);                                                          \
-    std::cout << std::endl;                                                    \
-  } while (false)
-#define FMSG(...) printf(__VA_ARGS__)
-#define FMSGLN(...)                                                            \
-  do {                                                                         \
-    FMSG(__VA_ARGS__);                                                         \
-    std::cout << std::endl;                                                    \
-  } while (false)
-
-#define PANIC(...)                                                             \
-  do {                                                                         \
-    MSGLN(__VA_ARGS__);                                                        \
-    std::terminate();                                                          \
-  } while (false)
-
-#define ASSERT(expr, ...)                                                      \
-  do {                                                                         \
-    if (!(expr)) {                                                             \
-      IF_ELSE(HAS_ARGS(__VA_ARGS__))                                           \
-      (PANIC(__VA_ARGS__))(std::terminate());                                  \
-    }                                                                          \
-  } while (false)
-#define ASSERT_EQ(expr1, expr2, ...)                                           \
-  do {                                                                         \
-    auto &&r1 = (expr1);                                                       \
-    auto &&r2 = (expr2);                                                       \
-    if (r1 != r2) {                                                            \
-      MSGLN("`" << r1 << "` != `" << r2 << "`");                               \
-      IF_ELSE(HAS_ARGS(__VA_ARGS__))                                           \
-      (PANIC(__VA_ARGS__))(std::terminate());                                  \
-    }                                                                          \
-  } while (false)
-
 struct TimeCost {
   using Clock = std::chrono::steady_clock;
   //
@@ -170,10 +107,6 @@ private:
   const char *label_;
   Clock::time_point start_;
 };
-
-#define SHOW_TIME_COST_IMPL(name)                                              \
-  TimeCost CONCAT(name, __LINE__) {}
-#define SHOW_TIME_COST SHOW_TIME_COST_IMPL(time_cost)
 
 namespace variant_op {
 template <class... Ts> struct overloaded : Ts... { using Ts::operator()...; };

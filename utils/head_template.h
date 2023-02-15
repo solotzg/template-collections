@@ -1,7 +1,8 @@
 #pragma once
 
 #include "head_define.h"
-#include <sstream>
+#include <fmt/chrono.h>
+#include <fmt/format.h>
 
 template <typename T, typename UP> struct OperatorWithModulo {
   static inline T mul_mod(T a, T b, T mod) {
@@ -87,35 +88,68 @@ template <size_t N> struct Factorial {
   int A[N], RA[N];
 };
 
-template <class T, class U> T cast(U x) {
-  T y;
-  std::ostringstream a;
-  a << x;
-  std::istringstream b(a.str());
-  b >> y;
-  return y;
+template <typename T> struct is_str { static constexpr bool value = false; };
+template <> struct is_str<std::string> { static constexpr bool value = true; };
+template <> struct is_str<std::string_view> {
+  static constexpr bool value = true;
+};
+template <typename T>
+static constexpr bool is_str_v =
+    is_str<std::remove_const_t<std::remove_reference_t<T>>>::value;
+
+template <class T, class U> T Cast(U &&x) {
+  if constexpr (std::is_same_v<std::remove_const_t<std::remove_reference_t<U>>,
+                               T>) {
+    return std::forward<U>(x);
+  } else if constexpr (is_str_v<U>) {
+    T y;
+    std::istringstream b(x.data(), x.size());
+    b >> y;
+    return y;
+  } else {
+    T y;
+    std::ostringstream a;
+    a << std::forward<U>(x);
+    std::istringstream b(a.str());
+    b >> y;
+    return y;
+  }
 }
 
 template <class T>
-std::vector<T> split(const std::string &s, const std::string &x = " ") {
-  std::vector<T> r;
-  rp(i, s.size()) {
-    std::string c;
-    while (i < (int)s.size() && x.find(s[i]) == std::string::npos)
-      c += s[i++];
-    if (c.size())
-      r.push_back(cast<T>(c));
+std::vector<T> Split(std::string_view s, std::string_view x = " ") {
+  std::vector<T> res;
+  for (;;) {
+    if (auto pos = s.find(x); pos == -1) {
+      if (!s.empty())
+        res.emplace_back(Cast<T>(s));
+      return res;
+    } else {
+      auto e = s.substr(0, pos);
+      if (!e.empty()) {
+        res.emplace_back(Cast<T>(e));
+      }
+      s = s.substr(e.size() + x.size());
+    }
   }
-  return r;
+  return res;
 }
 
-template <class T> inline void tin(T &x) {
-  int sg = 1;
-  char c;
-  while (((c = getchar()) < '0' || c > '9') && c != '-')
-    ;
-  c == '-' ? (sg = -1, x = 0) : (x = c - '0');
-  while ((c = getchar()) >= '0' && c <= '9')
-    x = x * 10 + c - '0';
-  x *= sg;
+static inline void PrintMessage(std::ostream &ostr, std::string_view split) {}
+template <typename T, typename... Args>
+void PrintMessage(std::ostream &ostr, std::string_view split, T &&arg1,
+                  Args &&...rest_args) {
+  ostr << arg1;
+  if constexpr (sizeof...(rest_args)) {
+    ostr << split;
+    PrintMessage(ostr, split, std::forward<Args>(rest_args)...);
+  }
+}
+static inline void PrintlnMessage(std::ostream &ostr, std::string_view split) {}
+template <typename T, typename... Args>
+void PrintlnMessage(std::ostream &ostr, std::string_view split, T &&arg1,
+                    Args &&...rest_args) {
+  PrintMessage(ostr, split, std::forward<T>(arg1),
+               std::forward<Args>(rest_args)...);
+  MSG_ENDL(ostr);
 }
