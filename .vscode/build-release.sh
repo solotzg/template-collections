@@ -16,6 +16,7 @@ CC=${CC} CXX=${CXX} cmake -S ${WORKSPACE_FOLDER} \
     -DENABLE_PCH=${ENABLE_PCH} \
     -DUSE_CCACHE=OFF \
     -DARCHNATIVE=ON \
+    -DENABLE_BENCHMARK=${ENABLE_BENCHMARK}\
     -GNinja
 
 cmake --build . --parallel ${NPROC}
