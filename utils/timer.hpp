@@ -6,7 +6,7 @@
 #include <queue>
 #include <thread>
 
-struct Timer : BasicConfig {
+struct Timer {
   using Clock = std::chrono::steady_clock;
   using TimePoint = Clock::time_point;
   using Delay = std::chrono::milliseconds;
@@ -163,17 +163,17 @@ struct Timer : BasicConfig {
   ~Timer() { StopAndWait(); }
 
 private:
-  // cache unfriendly
-  alignas(CPU_CACHE_LINE_SIZE) Notifier notifier_;
-  alignas(CPU_CACHE_LINE_SIZE) Queue queue_;
-  [[maybe_unused]] alignas(CPU_CACHE_LINE_SIZE) uint8_t pad_{};
-  //
   const Delay default_tick_;
   std::atomic_bool stop_{};
   std::unique_ptr<std::thread> context_;
+  // cache unfriendly
+  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) Notifier notifier_;
+  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) Queue queue_;
 };
 
-DECLARE_DEBUG_TEST_CODE(static void _test_timer() {
+#ifndef NDEBUG
+namespace tests {
+static void _test_timer() {
   {
     Timer timer;
 
@@ -183,14 +183,14 @@ DECLARE_DEBUG_TEST_CODE(static void _test_timer() {
     Timer::Delay delay{50};
     timer.Schedule(
         [&](bool stop) {
-  assert(!stop);
-  flag = true;
+          assert(!stop);
+          flag = true;
         },
         delay);
     auto cancel_case = timer.Schedule(
         [&](bool stop) {
-  assert(!stop);
-  cancel_test = true;
+          assert(!stop);
+          cancel_test = true;
         },
         delay);
     assert(flag == false);
@@ -201,57 +201,59 @@ DECLARE_DEBUG_TEST_CODE(static void _test_timer() {
     assert(timer.RunOneRound() == 2);
     assert(!cancel_test);
     assert(flag == true);
-}
-{
-  Timer timer;
+  }
+  {
+    Timer timer;
 
-  timer.AsyncRun();
-  auto old = Timer::Clock::now();
-  auto check = old;
-  Notifier notifier;
-  Timer::Delay delay(123);
-  timer.Schedule(
-      [&](bool stop) {
-        check = Timer::Clock::now();
-        notifier.Wake();
-        assert(!stop);
-      },
-      delay);
-  notifier.BlockedWaitFor(std::chrono::milliseconds(10000));
-  assert((check - old) >= delay);
-  timer.Schedule([](bool stop) { assert(stop); }, Timer::Delay(1000 * 3600));
-  timer.StopAndWait();
-  timer.Schedule([](bool stop) { assert(stop); }, Timer::Delay(1000 * 3600));
-}
-{
-  Timer timer;
-
-  timer.AsyncRun();
-  struct Test : MutexLockWrap {
-    void Add(int x) {
-      auto _ = GenLockGuard();
-      res.emplace_back(x);
-    }
-    std::vector<int> res;
-  } tests;
-  const int test_cnt = 10;
-  std::atomic_int cnt = test_cnt;
-  Notifier notifier;
-  for (int i = 0; i < test_cnt; ++i) {
+    timer.AsyncRun();
+    auto old = Timer::Clock::now();
+    auto check = old;
+    Notifier notifier;
+    Timer::Delay delay(123);
     timer.Schedule(
-        [&, i](bool stop) {
+        [&](bool stop) {
+          check = Timer::Clock::now();
+          notifier.Wake();
           assert(!stop);
-          tests.Add(i);
-          if (--cnt == 0) {
-            notifier.Wake();
-          }
         },
-        Timer::Delay(200 - i * test_cnt));
+        delay);
+    notifier.BlockedWaitFor(std::chrono::milliseconds(10000));
+    assert((check - old) >= delay);
+    timer.Schedule([](bool stop) { assert(stop); }, Timer::Delay(1000 * 3600));
+    timer.StopAndWait();
+    timer.Schedule([](bool stop) { assert(stop); }, Timer::Delay(1000 * 3600));
   }
-  notifier.BlockedWaitFor(std::chrono::milliseconds{3600 * 1000});
-  for (int i = 0; i < test_cnt; ++i) {
-    assert(tests.res[i] == (test_cnt - 1 - i));
+  {
+    Timer timer;
+
+    timer.AsyncRun();
+    struct Test : MutexLockWrap {
+      void Add(int x) {
+        auto _ = GenLockGuard();
+        res.emplace_back(x);
+      }
+      std::vector<int> res;
+    } tests;
+    const int test_cnt = 10;
+    std::atomic_int cnt = test_cnt;
+    Notifier notifier;
+    for (int i = 0; i < test_cnt; ++i) {
+      timer.Schedule(
+          [&, i](bool stop) {
+            assert(!stop);
+            tests.Add(i);
+            if (--cnt == 0) {
+              notifier.Wake();
+            }
+          },
+          Timer::Delay(200 - i * test_cnt));
+    }
+    notifier.BlockedWaitFor(std::chrono::milliseconds{3600 * 1000});
+    for (int i = 0; i < test_cnt; ++i) {
+      assert(tests.res[i] == (test_cnt - 1 - i));
+    }
+    timer.Stop();
   }
-  timer.Stop();
 }
-})
+} // namespace tests
+#endif

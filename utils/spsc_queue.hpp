@@ -3,13 +3,17 @@
 #include "utils.hpp"
 
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <optional>
+#include <sstream>
+#include <string_view>
 #include <thread>
 #include <utility>
 
-template <typename T, typename Allocator = std::allocator<T>>
-struct SPSCQueue : BasicConfig {
+template <typename T, typename Allocator = std::allocator<T>> struct SPSCQueue {
+  using Element = T;
+
   struct SPSCQueueCustomer {
     bool IsEmpty() { return spsc_queue_.IsEmpty(); }
     std::optional<T> Get() { return spsc_queue_.Get(); }
@@ -41,16 +45,6 @@ struct SPSCQueue : BasicConfig {
 
   SPSCQueueCustomer GenCustomer() { return SPSCQueueCustomer{*this}; }
 
-  static uint32_t NextPow2(uint32_t v) {
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v++;
-    return v;
-  }
   static size_t CalcMaxNum(size_t cap) {
     assert(cap < std::numeric_limits<uint32_t>::max());
     if (cap < 2)
@@ -59,7 +53,7 @@ struct SPSCQueue : BasicConfig {
   }
 
   explicit SPSCQueue(uint32_t cap, const Allocator &allocator = Allocator())
-      : allocator_(allocator), max_num_(CalcMaxNum(cap + 1)),
+      : allocator_(allocator), max_num_(CalcMaxNum(cap)),
         buffer_mask_(max_num_ - 1), buff_(max_num_, allocator_) {}
 
   SPSCQueue(const SPSCQueue &) = delete;
@@ -99,6 +93,17 @@ struct SPSCQueue : BasicConfig {
       head_.store((cur + 1) & buffer_mask_, std::memory_order_release);
     }
     buff_.Clear(max_num_, allocator_);
+  }
+
+  void Format(fmt::memory_buffer &out) const {
+    bool is_first = true;
+    for (auto cur = head_.load(std::memory_order_relaxed);
+         cur != tail_.load(std::memory_order_acquire);
+         cur = (cur + 1) & buffer_mask_) {
+      FMT_IF_APPEND(out, !is_first, ", ");
+      FMT_APPEND(out, "`{}`", buff_[cur]);
+      is_first = false;
+    }
   }
 
   static const char *name() { return "SPSCQueue"; }
@@ -161,18 +166,122 @@ private:
   }
 
 private:
-  alignas(CPU_CACHE_LINE_SIZE) std::atomic_size_t head_{};
-  alignas(CPU_CACHE_LINE_SIZE) std::atomic_size_t tail_{};
-  alignas(CPU_CACHE_LINE_SIZE) size_t head_cache_{};
-  alignas(CPU_CACHE_LINE_SIZE) size_t tail_cache_{};
-  [[maybe_unused]] alignas(CPU_CACHE_LINE_SIZE) uint8_t pad_{};
   Allocator allocator_;
   const size_t max_num_;
   const size_t buffer_mask_;
   Buff buff_;
+  /// Aligned to CPU cache line size
+  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) std::atomic_size_t head_{};
+  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) std::atomic_size_t tail_{};
+  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) size_t head_cache_{};
+  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) size_t tail_cache_{};
+  /*
+    Padding byte is used only when there is any member variables next.
+    If all those aligned member variables have been put at the end of struct,
+    padding byte is no need.
+  */
+  // [[maybe_unused]] alignas(BasicConfig::CPU_CACHE_LINE_SIZE) uint8_t pad_{};
 };
 
-DECLARE_DEBUG_TEST_CODE(static void _test_spsc_queue() {
+template <typename SPSC> struct SPSCQueueWithNotifer {
+  using Element = typename SPSC::Element;
+
+  bool Put(Element &&e, const std::chrono::milliseconds &timeout) {
+    auto time_point = std::chrono::steady_clock::now() + timeout;
+    return Put(std::forward<Element>(e), time_point);
+  }
+  bool Put(Element &&e,
+           const std::chrono::steady_clock::time_point &time_point) {
+    for (;;) {
+      if (auto res = TryPut(std::forward<Element>(e)); res) {
+        return res;
+      }
+      switch (producer_notifier_.BlockedWaitUtil(time_point)) {
+      case AsyncNotifier::Status::Timeout: {
+        return false;
+      }
+      case AsyncNotifier::Status::Normal: {
+        break;
+      }
+      }
+    }
+  }
+  bool TryPut(Element &&e) {
+    return spsc_queue_.GenProducer().Put(std::forward<Element>(e));
+  }
+
+  std::optional<Element> Get(const std::chrono::milliseconds &timeout) {
+    auto time_point = std::chrono::steady_clock::now() + timeout;
+    return Get(time_point);
+  }
+  std::optional<Element>
+  Get(const std::chrono::steady_clock::time_point &time_point) {
+    for (;;) {
+      if (auto res = TryGet(); res) {
+        return res;
+      }
+      switch (customer_notifier_.BlockedWaitUtil(time_point)) {
+      case AsyncNotifier::Status::Timeout: {
+        return false;
+      }
+      case AsyncNotifier::Status::Normal: {
+        break;
+      }
+      }
+    }
+  }
+
+  std::optional<Element> TryGet() { return spsc_queue_.GenCustomer().Get(); }
+
+  void WakeProducer() const { producer_notifier_.Wake(); }
+  void WakeCustomer() const { customer_notifier_.Wake(); }
+
+  template <typename... Args>
+  SPSCQueueWithNotifer(Args &&...args)
+      : spsc_queue_(std::forward<Args>(args)...) {}
+
+  SPSC spsc_queue_;
+  Notifier producer_notifier_;
+  Notifier customer_notifier_;
+};
+
+#ifndef NDEBUG
+namespace tests {
+
+struct TestNode {
+  TestNode(const TestNode &) = delete;
+  TestNode(int g) : v(g) { inc_cnt(); }
+  ~TestNode() { dec_cnt(); }
+  TestNode(TestNode &&src) {
+    inc_cnt();
+    v = src.v;
+  }
+  TestNode &operator=(TestNode &&src) {
+    inc_cnt();
+    v = src.v;
+    return *this;
+  }
+  static std::atomic<int> &test_node_cnt() {
+    static std::atomic<int> data{};
+    return data;
+  }
+  static void inc_cnt() { test_node_cnt()++; }
+  static void dec_cnt() { test_node_cnt()--; }
+  int v{};
+};
+
+static void _test_spsc_queue() {
+  {
+    ASSERT_EQ(NextPow2(1), 1);
+    ASSERT_EQ(NextPow2(2), 2);
+    for (uint32_t i = 3; i <= 4; ++i)
+      ASSERT_EQ(NextPow2(i), 4);
+    for (uint32_t i = 5; i <= 8; ++i)
+      ASSERT_EQ(NextPow2(i), 8);
+    for (uint32_t i = 9; i <= 16; ++i)
+      ASSERT_EQ(NextPow2(i), 16);
+    ASSERT_EQ(NextPow2(1u << 31), 1u << 31);
+  }
   static_assert(alignof(SPSCQueue<void *>) == 64);
   {
     SPSCQueue<uint8_t> s(1);
@@ -220,50 +329,33 @@ DECLARE_DEBUG_TEST_CODE(static void _test_spsc_queue() {
     }
   }
   {
-    static std::atomic<int> cnt = 0;
-    struct Test {
-      Test(const Test &) = delete;
-      Test(int g) : v(g) { inc_cnt(); }
-      ~Test() {
-        if (v)
-          dec_cnt();
-      }
-      Test(Test &&src) { std::swap(src.v, v); }
-      Test &operator=(Test &&src) {
-        std::swap(src.v, v);
-        return *this;
-      }
-      static void inc_cnt() { cnt++; }
-      static void dec_cnt() { cnt--; }
-      int v{};
-    };
     {
-      Test _{1};
-      assert(cnt == 1);
+      TestNode _{1};
+      assert(TestNode::test_node_cnt() == 1);
     }
-    assert(cnt == 0);
+    ASSERT_EQ(TestNode::test_node_cnt(), 0);
     {
-      SPSCQueue<Test> s(3);
+      SPSCQueue<TestNode> s(3);
       auto producer = s.GenProducer();
       auto customer = s.GenCustomer();
 
-      producer.Put(Test{2});
-      producer.Put(Test{3});
-      producer.Put(Test{4});
-      assert(cnt == 3);
+      producer.Put(TestNode{2});
+      producer.Put(TestNode{3});
+      producer.Put(TestNode{4});
+      assert(TestNode::test_node_cnt() == 3);
       customer.Get();
-      assert(cnt == 2);
+      assert(TestNode::test_node_cnt() == 2);
     }
-    assert(cnt == 0);
+    ASSERT_EQ(TestNode::test_node_cnt(), 0);
 
     {
-      SPSCQueue<Test> s(3);
+      SPSCQueue<TestNode> s(3);
       auto producer = s.GenProducer();
       auto customer = s.GenCustomer();
 
       std::thread t1([&]() {
         for (int i = 0; i < 8192; ++i) {
-          while (!producer.Put(Test{i + 1}))
+          while (!producer.Put(TestNode{i + 1}))
             std::this_thread::yield();
         }
       });
@@ -278,7 +370,37 @@ DECLARE_DEBUG_TEST_CODE(static void _test_spsc_queue() {
         }
       }
       t1.join();
-      assert(cnt == 0);
+      ASSERT_EQ(TestNode::test_node_cnt(), 0);
+    }
+
+    {
+      SPSCQueueWithNotifer<SPSCQueue<TestNode>> s{3};
+
+      std::thread t1([&]() {
+        for (int i = 0; i < 8192; ++i) {
+          ASSERT(s.Put(TestNode{i + 1}, std::chrono::seconds{8192}));
+          s.WakeCustomer();
+        }
+      });
+      for (int i = 0; i < 8192; ++i) {
+        auto v = s.Get(std::chrono::seconds{8192});
+        ASSERT(v);
+        ASSERT_EQ(v->v, i + 1);
+        s.WakeProducer();
+      }
+      t1.join();
+      ASSERT_EQ(TestNode::test_node_cnt(), 0);
     }
   }
-})
+}
+} // namespace tests
+
+template <>
+struct fmt::formatter<tests::TestNode> : fmt::formatter<std::string> {
+  template <typename FormatCtx>
+  auto format(const tests::TestNode &a, FormatCtx &ctx) const {
+    return fmt::formatter<std::string>::format(fmt::format("{}", a.v), ctx);
+  }
+};
+
+#endif
