@@ -200,7 +200,9 @@ private:
   Data data_;
 };
 
-DECLARE_DEBUG_TEST_CODE(static void _test_big_int() {
+#ifndef NDEBUG
+namespace tests {
+static void _test_big_int() {
   using BINT = BigInt<5000, 15>;
   {
     BINT big_int = -BINT::MAX_NUM / 2;
@@ -228,4 +230,6 @@ DECLARE_DEBUG_TEST_CODE(static void _test_big_int() {
     big_int <<= 1;
     MSGLN(big_int.Show());
   }
-})
+}
+} // namespace tests
+#endif

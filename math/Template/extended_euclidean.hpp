@@ -21,7 +21,9 @@ static int64_t inverse(int64_t a, int64_t mod) {
   return x;
 }
 
-DECLARE_DEBUG_TEST_CODE(static int _test_extend_gcd() {
+#ifndef NDEBUG
+namespace tests {
+static void _test_extend_gcd() {
   // http://www.cnblogs.com/frog112111/archive/2012/08/19/2646012.html
   // http://www.cnblogs.com/void/archive/2011/04/18/2020357.html
   {
@@ -43,5 +45,6 @@ DECLARE_DEBUG_TEST_CODE(static int _test_extend_gcd() {
     int64_t r = extend_gcd(a, b, x, y);
     assert(a * (x * c / r) + b * (y * c / r) == c);
   }
-  return 0;
-})
+}
+} // namespace tests
+#endif

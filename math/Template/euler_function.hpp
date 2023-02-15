@@ -36,7 +36,9 @@ private:
   std::vector<int> phi_, prime_;
 };
 
-DECLARE_DEBUG_TEST_CODE(static void _test_euler_function() {
+#ifndef NDEBUG
+namespace tests {
+static void _test_euler_function() {
   EulerFunction euler_function;
   euler_function.init(10);
   assert((euler_function.prime() == std::vector{2, 3, 5, 7}));
@@ -47,4 +49,6 @@ DECLARE_DEBUG_TEST_CODE(static void _test_euler_function() {
   }
   d.emplace_back(1);
   assert((d == std::vector{7, 6, 2, 1}));
-})
+}
+} // namespace tests
+#endif

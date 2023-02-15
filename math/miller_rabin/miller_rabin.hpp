@@ -108,7 +108,9 @@ private:
   int fnum_;             // num of prime factor
 };
 
-DECLARE_DEBUG_TEST_CODE(static void _test_miller_rabin() {
+#ifndef NDEBUG
+namespace tests {
+static void _test_miller_rabin() {
   MillerRabin m;
 
   const auto is_prime = [](int64_t num) {
@@ -129,4 +131,6 @@ DECLARE_DEBUG_TEST_CODE(static void _test_miller_rabin() {
       assert(!is_prime(num));
     }
   }
-})
+}
+} // namespace tests
+#endif
