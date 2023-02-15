@@ -1,3 +1,3 @@
-#include "utils/work.h"
+#include "utils/utils.h"
 
 int main() { MSGLN("666"); }
