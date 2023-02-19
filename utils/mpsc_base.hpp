@@ -1,7 +1,6 @@
 #pragma once
 
 #include "spsc_queue.hpp"
-#include <chrono>
 
 /*
 enum class Priority : size_t { High = 0, Mid, Low, _MAX };
@@ -95,13 +94,10 @@ struct MPSCWorker {
   }
 
   struct MPSCWorkerCustomer {
-    template <typename CB>
-    size_t Consume(CB &&cb, const size_t max_consume_cnt = 8) {
-      return Consume(cb, max_consume_cnt);
-    }
-    template <typename CB>
-    size_t Consume(CB &cb, const size_t max_consume_cnt) {
-      return worker_.Consume(cb, max_consume_cnt);
+    template <typename CallBack, typename CallBackWhenEmpty>
+    size_t Consume(CallBack &&cb, CallBackWhenEmpty &&cb_empty,
+                   const size_t max_consume_cnt = 8) {
+      return worker_.Consume(cb, cb_empty, max_consume_cnt);
     }
 
     MPSCWorkerCustomer(MPSCWorker &worker) : worker_(worker) {}
@@ -116,7 +112,9 @@ struct MPSCWorker {
 
 protected:
   // unsafe
-  template <typename CB> size_t Consume(CB &cb, const size_t max_consume_cnt) {
+  template <typename CallBack, typename CallBackWhenEmpty>
+  size_t Consume(CallBack &&cb, CallBackWhenEmpty &&cb_empty,
+                 const size_t max_consume_cnt) {
     size_t consume_cnt{};
 
     for (;;) {
@@ -128,9 +126,11 @@ protected:
              ++queue_round_robin_index_) {
           auto &spsc = spsc_queues_[queue_round_robin_index_];
           if (auto t = spsc.GenCustomer().Get(); t) {
-            cb(std::move(*t));
+            cb(std::move(*t), queue_round_robin_index_);
             consume_cnt++;
             any_consumed = true;
+          } else {
+            cb_empty(queue_round_robin_index_);
           }
         }
       };
@@ -167,24 +167,31 @@ private:
 template <typename MPSC> struct MPSCQueueWithNotifer {
   using Element = typename MPSC::Element;
 
+  template <typename CB>
   bool Put(Element &&e, size_t pos_hint,
-           const std::chrono::milliseconds &timeout) {
+           const std::chrono::milliseconds &timeout, CB &&cb_when_full) {
+    if (auto res = TryPut(std::forward<Element>(e), pos_hint); res) {
+      return res;
+    }
     auto time_point = std::chrono::steady_clock::now() + timeout;
-    return Put(std::forward<Element>(e), pos_hint, time_point);
+    return Put(std::forward<Element>(e), pos_hint, time_point,
+               std::move(cb_when_full));
   }
+  template <typename CB>
   bool Put(Element &&e, size_t pos_hint,
-           const std::chrono::steady_clock::time_point &time_point) {
+           const std::chrono::steady_clock::time_point &time_point,
+           CB &&cb_when_full) {
     for (;;) {
       if (auto res = TryPut(std::forward<Element>(e), pos_hint); res) {
         return res;
+      } else {
+        cb_when_full();
       }
       switch (producer_notifier(pos_hint).BlockedWaitUtil(time_point)) {
-      case AsyncNotifier::Status::Timeout: {
+      case AsyncNotifier::Status::Timeout:
         return false;
-      }
-      case AsyncNotifier::Status::Normal: {
+      case AsyncNotifier::Status::Normal:
         break;
-      }
       }
     }
   }
@@ -193,33 +200,38 @@ template <typename MPSC> struct MPSCQueueWithNotifer {
     return mpsc_queue_.Put(std::forward<Element>(e), pos_hint);
   }
 
-  template <typename CB>
-  size_t Get(CB &&cb, const std::chrono::milliseconds &timeout,
+  template <typename CallBack, typename CallBackWhenEmpty>
+  size_t Get(CallBack &&cb, CallBackWhenEmpty &&cb_empty,
+             const std::chrono::milliseconds &timeout,
              const size_t max_consume_cnt) {
+    if (auto res = TryGet(cb, cb_empty, max_consume_cnt); res) {
+      return res;
+    }
     auto time_point = std::chrono::steady_clock::now() + timeout;
-    return Get(std::move(cb), time_point, max_consume_cnt);
+    return Get(cb, cb_empty, time_point, max_consume_cnt);
   }
 
-  template <typename CB>
-  size_t Get(CB &&cb, const std::chrono::steady_clock::time_point &time_point,
+  template <typename CallBack, typename CallBackWhenEmpty>
+  size_t Get(CallBack &&cb, CallBackWhenEmpty &&cb_empty,
+             const std::chrono::steady_clock::time_point &time_point,
              const size_t max_consume_cnt) {
     for (;;) {
-      if (auto res = TryGet(cb, max_consume_cnt); res) {
+      if (auto res = TryGet(cb, cb_empty, max_consume_cnt); res) {
         return res;
       }
       switch (customer_notifier_.BlockedWaitUtil(time_point)) {
-      case AsyncNotifier::Status::Timeout: {
+      case AsyncNotifier::Status::Timeout:
         return 0;
-      }
-      case AsyncNotifier::Status::Normal: {
+      case AsyncNotifier::Status::Normal:
         break;
-      }
       }
     }
   }
 
-  template <typename CB> size_t TryGet(CB &cb, const size_t max_consume_cnt) {
-    return mpsc_queue_.GenCustomer().Consume(cb, max_consume_cnt);
+  template <typename CallBack, typename CallBackWhenEmpty>
+  size_t TryGet(CallBack &&cb, CallBackWhenEmpty &&cb_empty,
+                const size_t max_consume_cnt) {
+    return mpsc_queue_.GenCustomer().Consume(cb, cb_empty, max_consume_cnt);
   }
 
   void WakeProducer(size_t pos_hint) const {
@@ -230,20 +242,10 @@ template <typename MPSC> struct MPSCQueueWithNotifer {
   template <typename... Args>
   MPSCQueueWithNotifer(Args &&...args)
       : mpsc_queue_(std::forward<Args>(args)...) {
-    auto allocator = std::allocator<Notifier>{};
-    producer_notifier_ = allocator.allocate(mpsc_queue_.producer_size());
-    for (size_t pos = 0; pos != mpsc_queue_.producer_size(); ++pos) {
-      new (producer_notifier_ + pos) Notifier();
-    }
+    producer_notifier_ = new Notifier[mpsc_queue_.producer_size()];
   }
 
-  ~MPSCQueueWithNotifer() {
-    for (size_t pos = 0; pos != mpsc_queue_.producer_size(); ++pos) {
-      producer_notifier_[pos].~Notifier();
-    }
-    std::allocator<Notifier>{}.deallocate(producer_notifier_,
-                                          mpsc_queue_.producer_size());
-  }
+  ~MPSCQueueWithNotifer() { delete[] producer_notifier_; }
 
   typename MPSC::String Show() const { return mpsc_queue_.Show(); }
 
@@ -272,6 +274,9 @@ struct fmt::formatter<std::vector<T>> : fmt::formatter<std::string> {
 
 namespace tests {
 
+static auto &&func_nothing1 = [](size_t) {};
+static auto &&func_nothing2 = []() {};
+
 static void _test_mpsc_with_notifer() {
   {
     ASSERT_EQ(TestNode::test_node_cnt(), 0);
@@ -280,23 +285,27 @@ static void _test_mpsc_with_notifer() {
     auto test_loop = 1024;
     std::thread t1([&]() {
       for (int i = 0; i < test_loop; ++i) {
-        ASSERT(s.Put(TestNode{i * 2}, 1, std::chrono::seconds{8192}));
+        ASSERT(s.Put(TestNode{i * 2}, 1, std::chrono::seconds{8192},
+                     func_nothing2));
         s.WakeCustomer();
       }
     });
     std::thread t2([&]() {
       for (int i = 0; i < test_loop; ++i) {
-        ASSERT(s.Put(TestNode{i * 2 + 1}, 2, std::chrono::seconds{8192}));
+        ASSERT(s.Put(TestNode{i * 2 + 1}, 2, std::chrono::seconds{8192},
+                     func_nothing2));
         s.WakeCustomer();
       }
     });
     auto res = 0, cnt = 0;
     for (;;) {
-      auto x = s.Get([&](TestNode &&t) { res += t.v; },
+      auto x = s.Get([&](TestNode &&t, size_t) { res += t.v; },
+                     [&](size_t empty_producer_index) {
+                       s.WakeProducer(empty_producer_index);
+                     },
                      std::chrono::seconds{8192}, 8192);
       ASSERT(x);
       cnt += x;
-      rp(k, producer_size) s.WakeProducer(k);
       if (res == (test_loop * 2 - 1) * (test_loop * 2) / 2) {
         ASSERT_EQ(cnt, test_loop * 2);
         break;
@@ -308,11 +317,11 @@ static void _test_mpsc_with_notifer() {
   }
   {
     MPSCQueueWithNotifer<MPSCWorker<int>> s(1, 1);
-    ASSERT(s.Put(666, 0, std::chrono::seconds{8192}));
-    ASSERT(!s.Put(777, 0, std::chrono::milliseconds{5}));
-    ASSERT(s.Get([](auto &&c) { ASSERT_EQ(c, 666); },
+    ASSERT(s.Put(666, 0, std::chrono::seconds{8192}, func_nothing2));
+    ASSERT(!s.Put(777, 0, std::chrono::milliseconds{5}, func_nothing2));
+    ASSERT(s.Get([](auto &&c, size_t) { ASSERT_EQ(c, 666); }, func_nothing1,
                  std::chrono::seconds{8192}, 1));
-    ASSERT(!s.Get([](auto &&c) { ASSERT_EQ(c, 666); },
+    ASSERT(!s.Get([](auto &&c, size_t) { ASSERT_EQ(c, 666); }, func_nothing1,
                   std::chrono::milliseconds{5}, 1));
   }
 }
@@ -332,8 +341,8 @@ static void _test_mpsc_queue() {
       "{size:2, data:{queue_0:{`1`, `3`, `5`}, queue_1:{`2`, `4`, `6`}}}");
   {
     std::vector<int> data{};
-    auto r =
-        mpsc.GenCustomer().Consume([&](int x) { data.emplace_back(x); }, 3);
+    auto r = mpsc.GenCustomer().Consume(
+        [&](int x, size_t) { data.emplace_back(x); }, func_nothing1, 3);
     ASSERT_EQ(r, 3);
     ASSERT(data == std::vector<int>({1, 2, 3}));
     ASSERT_EQ(mpsc.Show(),
@@ -341,8 +350,8 @@ static void _test_mpsc_queue() {
   }
   {
     std::vector<int> data;
-    auto r =
-        mpsc.GenCustomer().Consume([&](int x) { data.emplace_back(x); }, 2);
+    auto r = mpsc.GenCustomer().Consume(
+        [&](int x, size_t) { data.emplace_back(x); }, func_nothing1, 2);
     ASSERT_EQ(r, 2);
     ASSERT(data == (std::vector{4, 5}));
     ASSERT_EQ(mpsc.Show(), "{size:2, data:{queue_0:{}, queue_1:{`6`}}}");
@@ -350,7 +359,8 @@ static void _test_mpsc_queue() {
 
   {
     std::set<int> data;
-    auto r = mpsc.GenCustomer().Consume([&](int x) { data.emplace(x); },
+    auto r = mpsc.GenCustomer().Consume([&](int x, size_t) { data.emplace(x); },
+                                        func_nothing1,
                                         std ::numeric_limits<size_t>::max());
     ASSERT_EQ(r, 1);
     ASSERT(data == std::set<int>{6});
@@ -361,5 +371,6 @@ static void _test_mpsc() {
   _test_mpsc_with_notifer();
   _test_mpsc_queue();
 }
+
 } // namespace tests
 #endif

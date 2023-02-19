@@ -94,6 +94,9 @@ struct Notifier final : AsyncNotifier, MutexLockWrap {
   void Wake() const override {
     // if flag from false -> true, then wake up.
     // if flag from true -> true, do nothing.
+    if (wait_flag_.load(std::memory_order_acquire)) {
+      return;
+    }
     if (!wait_flag_.exchange(true, std::memory_order_acq_rel)) {
       // wake up notifier
       auto _ = GenLockGuard();
