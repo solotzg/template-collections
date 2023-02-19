@@ -57,6 +57,7 @@ struct AsyncNotifier {
     Timeout,
     Normal,
   };
+  // NOT thread safe
   virtual Status BlockedWaitFor(const std::chrono::milliseconds &) {
     return AsyncNotifier::Status::Timeout;
   }
@@ -64,6 +65,8 @@ struct AsyncNotifier {
   BlockedWaitUtil(const std::chrono::steady_clock::time_point &) {
     return AsyncNotifier::Status::Timeout;
   }
+  // thread safe
+  virtual bool IsAwake() const = 0;
   virtual void Wake() const = 0;
   virtual ~AsyncNotifier() = default;
 };
@@ -78,15 +81,15 @@ struct Notifier final : AsyncNotifier, MutexLockWrap {
     // if flag from false to false, wait for notification.
     // if flag from true to false, do nothing.
     auto res = AsyncNotifier::Status::Normal;
-    if (!wait_flag_.exchange(false, std::memory_order_acq_rel)) {
+    if (!is_awake_.exchange(false, std::memory_order_acq_rel)) {
       {
         auto lock = GenUniqueLock();
-        if (!wait_flag_.load(std::memory_order_acquire)) {
+        if (!is_awake_.load(std::memory_order_acquire)) {
           if (cv_.wait_until(lock, time_point) == std::cv_status::timeout)
             res = AsyncNotifier::Status::Timeout;
         }
       }
-      wait_flag_.store(false, std::memory_order_release);
+      is_awake_.store(false, std::memory_order_release);
     }
     return res;
   }
@@ -94,14 +97,18 @@ struct Notifier final : AsyncNotifier, MutexLockWrap {
   void Wake() const override {
     // if flag from false -> true, then wake up.
     // if flag from true -> true, do nothing.
-    if (wait_flag_.load(std::memory_order_acquire)) {
+    if (IsAwake()) {
       return;
     }
-    if (!wait_flag_.exchange(true, std::memory_order_acq_rel)) {
+    if (!is_awake_.exchange(true, std::memory_order_acq_rel)) {
       // wake up notifier
       auto _ = GenLockGuard();
       cv_.notify_one();
     }
+  }
+
+  bool IsAwake() const override {
+    return is_awake_.load(std::memory_order_acquire);
   }
 
   virtual ~Notifier() = default;
@@ -110,7 +117,7 @@ private:
   mutable std::condition_variable cv_;
   // multi notifiers single receiver model. use another flag to avoid waiting
   // endlessly.
-  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) mutable std::atomic_bool wait_flag_{
+  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) mutable std::atomic_bool is_awake_{
       false};
 };
 
