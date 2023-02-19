@@ -168,26 +168,26 @@ template <typename MPSC> struct MPSCQueueWithNotifer {
   using Element = typename MPSC::Element;
 
   template <typename CB>
-  bool Put(Element &&e, size_t pos_hint,
-           const std::chrono::milliseconds &timeout, CB &&cb_when_full) {
-    if (auto res = TryPut(std::forward<Element>(e), pos_hint); res) {
+  bool Put(Element &&e, size_t pos, const std::chrono::milliseconds &timeout,
+           CB &&cb_when_full) {
+    if (auto res = TryPut(std::forward<Element>(e), pos); res) {
       return res;
     }
     auto time_point = std::chrono::steady_clock::now() + timeout;
-    return Put(std::forward<Element>(e), pos_hint, time_point,
+    return Put(std::forward<Element>(e), pos, time_point,
                std::move(cb_when_full));
   }
   template <typename CB>
-  bool Put(Element &&e, size_t pos_hint,
+  bool Put(Element &&e, size_t pos,
            const std::chrono::steady_clock::time_point &time_point,
            CB &&cb_when_full) {
     for (;;) {
-      if (auto res = TryPut(std::forward<Element>(e), pos_hint); res) {
+      if (auto res = TryPut(std::forward<Element>(e), pos); res) {
         return res;
       } else {
         cb_when_full();
       }
-      switch (producer_notifier(pos_hint).BlockedWaitUtil(time_point)) {
+      switch (producer_notifier_[pos].BlockedWaitUtil(time_point)) {
       case AsyncNotifier::Status::Timeout:
         return false;
       case AsyncNotifier::Status::Normal:
@@ -196,8 +196,8 @@ template <typename MPSC> struct MPSCQueueWithNotifer {
     }
   }
 
-  bool TryPut(Element &&e, size_t pos_hint) {
-    return mpsc_queue_.Put(std::forward<Element>(e), pos_hint);
+  bool TryPut(Element &&e, size_t pos) {
+    return mpsc_queue_.PutAt(std::forward<Element>(e), pos);
   }
 
   template <typename CallBack, typename CallBackWhenEmpty>
@@ -234,9 +234,7 @@ template <typename MPSC> struct MPSCQueueWithNotifer {
     return mpsc_queue_.GenCustomer().Consume(cb, cb_empty, max_consume_cnt);
   }
 
-  void WakeProducer(size_t pos_hint) const {
-    producer_notifier(pos_hint).Wake();
-  }
+  void WakeProducer(size_t pos) const { producer_notifier_[pos].Wake(); }
   void WakeCustomer() const { customer_notifier_.Wake(); }
 
   template <typename... Args>
@@ -250,13 +248,6 @@ template <typename MPSC> struct MPSCQueueWithNotifer {
   typename MPSC::String Show() const { return mpsc_queue_.Show(); }
 
 private:
-  const Notifier &producer_notifier(size_t pos_hint) const {
-    return producer_notifier_[pos_hint % mpsc_queue_.producer_size()];
-  }
-  Notifier &producer_notifier(size_t pos_hint) {
-    return producer_notifier_[pos_hint % mpsc_queue_.producer_size()];
-  }
-
   Notifier *producer_notifier_;
   MPSC mpsc_queue_;
   Notifier customer_notifier_;

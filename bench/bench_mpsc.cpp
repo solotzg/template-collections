@@ -33,9 +33,7 @@ template <typename T> struct MPMCNormal : MutexLockWrap {
     rp(i, producer_size_) queues_[i].~Data();
     std::allocator<Data>{}.deallocate(queues_, producer_size_);
   }
-  bool Put(T &&v, size_t index) {
-    return queues_[index % producer_size_].emplace(std::move(v));
-  }
+  bool Put(T &&v, size_t index) { return queues_[index].emplace(std::move(v)); }
   template <typename CB> bool Get(CB &&cb) {
     const auto ori_index = round_robin_index_;
     auto &&func = [&](size_t end) -> std::optional<T> {
@@ -63,9 +61,12 @@ template <typename T> struct MPMCNormal : MutexLockWrap {
 private:
   const size_t producer_cap_;
   struct Data : MutexLockWrap {
-    Data(size_t cap) : cap_(cap) { inner_ = std::allocator<T>{}.allocate(cap); }
+    Data(size_t cap) : cap_(cap), cap_mask_(cap_ - 1) {
+      ASSERT_EQ(cap, NextPow2(cap));
+      inner_ = std::allocator<T>{}.allocate(cap);
+    }
     ~Data() {
-      rp(i, size_) inner_[(i + begin_) % cap_].~T();
+      rp(i, size_) inner_[(i + begin_) & cap_mask_].~T();
       std::allocator<T>{}.deallocate(inner_, cap_);
     }
     T &operator[](size_t index) { return inner_[index]; }
@@ -78,7 +79,7 @@ private:
       if (size_ >= cap_)
         return false;
       new (inner_ + end_) T(std::move(val));
-      end_ = (end_ + 1) % cap_;
+      end_ = (end_ + 1) & cap_mask_;
       ++size_;
       return true;
     }
@@ -88,13 +89,14 @@ private:
       if (0 == size_)
         return std::nullopt;
       auto index = begin_;
-      begin_ = (begin_ + 1) % cap_;
+      begin_ = (begin_ + 1) & cap_mask_;
       --size_;
       return std::move(inner_[index]);
     }
 
   private:
     const size_t cap_{};
+    const size_t cap_mask_{};
     size_t begin_{};
     size_t end_{};
     size_t size_{};
