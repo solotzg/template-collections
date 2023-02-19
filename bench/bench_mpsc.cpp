@@ -1,14 +1,40 @@
 #include "utils/mpsc_base.hpp"
 
 namespace bench {
+template <typename T> struct BenchNode {
+  BenchNode(const BenchNode &) = delete;
+  BenchNode(T &&val) : val_(std::move(val)) { inc_cnt(); }
+  ~BenchNode() { dec_cnt(); }
+  BenchNode(BenchNode &&src) {
+    inc_cnt();
+    val_ = std::move(src.val_);
+  }
+  BenchNode &operator=(BenchNode &&src) {
+    inc_cnt();
+    val_ = std::move(src.val_);
+    return *this;
+  }
+  static std::atomic_uint64_t &test_node_cnt() {
+    static std::atomic_uint64_t data{};
+    return data;
+  }
+  static void inc_cnt() { test_node_cnt()++; }
+  static void dec_cnt() { test_node_cnt()--; }
+  T val_{};
+};
+
 template <typename T> struct MPMCNormal : MutexLockWrap {
   MPMCNormal(size_t producer_size, size_t producer_cap)
-      : producer_cap_(producer_cap) {
-    rp(i, producer_size)
-        queues_.emplace_back(std::make_unique<Data>(producer_cap));
+      : producer_size_(producer_size), producer_cap_(producer_cap) {
+    queues_ = std::allocator<Data>{}.allocate(producer_size_);
+    rp(i, producer_size_) new (queues_ + i) Data(producer_cap);
+  }
+  ~MPMCNormal() {
+    rp(i, producer_size_) queues_[i].~Data();
+    std::allocator<Data>{}.deallocate(queues_, producer_size_);
   }
   bool Put(T &&v, size_t index) {
-    return queues_[index % queues_.size()]->emplace(std::move(v));
+    return queues_[index % producer_size_].emplace(std::move(v));
   }
   template <typename CB> bool Get(CB &&cb) {
     const auto ori_index = round_robin_index_;
@@ -16,13 +42,13 @@ template <typename T> struct MPMCNormal : MutexLockWrap {
       std::optional<T> res;
       for (; round_robin_index_ < end; ++round_robin_index_) {
         auto &queue = queues_[round_robin_index_];
-        auto res = queue->pop();
+        auto res = queue.pop();
         if (res)
           return res;
       }
       return std::nullopt;
     };
-    auto res = func(queues_.size());
+    auto res = func(producer_size_);
     if (!res) {
       round_robin_index_ = 0;
       res = func(ori_index);
@@ -37,10 +63,10 @@ template <typename T> struct MPMCNormal : MutexLockWrap {
 private:
   const size_t producer_cap_;
   struct Data : MutexLockWrap {
-    Data(size_t cap) : cap_(cap) { inner_ = new T[cap_]; }
+    Data(size_t cap) : cap_(cap) { inner_ = std::allocator<T>{}.allocate(cap); }
     ~Data() {
       rp(i, size_) inner_[(i + begin_) % cap_].~T();
-      delete[] inner_;
+      std::allocator<T>{}.deallocate(inner_, cap_);
     }
     T &operator[](size_t index) { return inner_[index]; }
     const T &operator[](size_t index) const { return inner_[index]; }
@@ -74,7 +100,9 @@ private:
     size_t size_{};
     T *inner_{};
   };
-  std::vector<std::unique_ptr<Data>> queues_;
+
+  const size_t producer_size_;
+  Data *queues_;
   size_t round_robin_index_{};
 };
 
@@ -163,7 +191,8 @@ void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
   RUNTIME_ASSERT(cnt == producer_size * test_loop);
 }
 
-void bench_mpsc(size_t producer_size, size_t test_loop, size_t producer_cap) {
+void bench_mpsc_awake(size_t producer_size, size_t test_loop,
+                      size_t producer_cap) {
   MPSCQueueWithNotifer<MPSCWorker<int>> mpsc_worker(producer_size,
                                                     producer_cap);
   std::list<std::thread> producer_runners;
@@ -218,10 +247,15 @@ void bench_mpsc(size_t producer_size, size_t test_loop, size_t producer_cap) {
   RUNTIME_ASSERT(res == expect_res);
   RUNTIME_ASSERT(cnt == producer_size * test_loop);
 }
+
+void bench_mpsc(size_t producer_size, size_t test_loop, size_t producer_cap) {
+#define M(fn_name) fn_name(producer_size, test_loop, producer_cap)
+  M(bench_mpsc_normal_stl);
+  M(bench_mpsc_awake);
+  M(bench_mpsc_spin_loop);
+#undef M
+}
+
 } // namespace bench
 
-int main() {
-  bench::bench_mpsc_normal_stl(8, 1024 * 1024, 1024);
-  bench::bench_mpsc(8, 1024 * 1024, 1024);
-  bench::bench_mpsc_spin_loop(8, 1024 * 1024, 1024);
-}
+int main() { bench::bench_mpsc(8, 1024 * 1024 * 2, 1024); }
