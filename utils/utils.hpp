@@ -133,3 +133,19 @@ static uint32_t NextPow2(uint32_t v) {
   v++;
   return v;
 }
+
+struct Waiter : MutexLockWrap {
+  void Wait() {
+    auto lock = GenUniqueLock();
+    cv_.wait(lock, [&] { return start_; });
+  }
+  void WakeAll() {
+    auto lock = GenLockGuard();
+    start_ = true;
+    cv_.notify_all();
+  }
+
+protected:
+  std::condition_variable cv_;
+  bool start_ = false;
+};

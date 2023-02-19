@@ -1,23 +1,6 @@
 #include "utils/mpsc_base.hpp"
 
 namespace bench {
-
-struct Waiter : MutexLockWrap {
-  std::condition_variable cv;
-  bool start = false;
-
-  void Wait() {
-    auto lock = GenUniqueLock();
-    while (!start)
-      cv.wait(lock);
-  }
-  void WakeAll() {
-    auto lock = GenLockGuard();
-    start = true;
-    cv.notify_all();
-  }
-};
-
 template <typename T> struct MPMCNormal : MutexLockWrap {
   MPMCNormal(size_t producer_size, size_t producer_cap)
       : producer_cap_(producer_cap) {
@@ -198,8 +181,6 @@ void bench_mpsc(size_t producer_size, size_t test_loop, size_t producer_cap) {
         RUNTIME_ASSERT(res);
         mpsc_worker.WakeCustomer();
       }
-      // at the end, must wake customer
-      mpsc_worker.WakeCustomer();
       tol_full_cnt += full_cnt;
     });
   }
