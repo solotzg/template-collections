@@ -62,7 +62,7 @@ private:
   const size_t producer_cap_;
   struct Data : MutexLockWrap {
     Data(size_t cap) : cap_(cap), cap_mask_(cap_ - 1) {
-      ASSERT_EQ(cap, NextPow2(cap));
+      RUNTIME_ASSERT_EQ(cap, NextPow2(cap));
       inner_ = std::allocator<T>{}.allocate(cap);
     }
     ~Data() {
@@ -251,6 +251,7 @@ void bench_mpsc_awake(size_t producer_size, size_t test_loop,
 }
 
 void bench_mpsc(size_t producer_size, size_t test_loop, size_t producer_cap) {
+  RUNTIME_ASSERT(producer_size + 1 <= std::thread::hardware_concurrency());
 #define M(fn_name) fn_name(producer_size, test_loop, producer_cap)
   M(bench_mpsc_normal_stl);
   M(bench_mpsc_awake);
@@ -260,4 +261,4 @@ void bench_mpsc(size_t producer_size, size_t test_loop, size_t producer_cap) {
 
 } // namespace bench
 
-int main() { bench::bench_mpsc(8, 1024 * 1024 * 2, 1024); }
+int main() { bench::bench_mpsc(7, 1024 * 1024 * 2, 1024); }
