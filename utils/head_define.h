@@ -185,6 +185,6 @@ typedef __int128 INT128;
   if (expr) {                                                                  \
     FMT_APPEND(out, __VA_ARGS__);                                              \
   }
-#define FMT_SURROUND(out, str_begin, str_end)                                  \
+#define SCOPE_EXIT_FMT_SURROUND(out, str_begin, str_end)                       \
   fmt::format_to(std::back_inserter(out), "{}", str_begin);                    \
   SCOPE_EXIT({ fmt::format_to(std::back_inserter(out), "{}", str_end); })

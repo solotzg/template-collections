@@ -78,15 +78,15 @@ struct MPSCWorker {
     return fmt::to_string(out);
   }
   void Format(fmt::memory_buffer &out) const {
-    FMT_SURROUND(out, "{", "}");
+    SCOPE_EXIT_FMT_SURROUND(out, "{", "}");
     FMT_APPEND(out, "size:{}", producer_size_);
     FMT_APPEND(out, ", data:");
-    FMT_SURROUND(out, "{", "}");
+    SCOPE_EXIT_FMT_SURROUND(out, "{", "}");
     {
       for (size_t i = 0; i < producer_size_; ++i) {
         FMT_IF_APPEND(out, i, ", ");
         FMT_APPEND(out, "queue_{}:", i);
-        FMT_SURROUND(out, "{", "}");
+        SCOPE_EXIT_FMT_SURROUND(out, "{", "}");
         auto &spsc = spsc_queues_[i];
         spsc.Format(out);
       }
@@ -283,7 +283,7 @@ static void _test_mpsc_with_notifer() {
     });
     std::thread t2([&]() {
       for (int i = 0; i < test_loop; ++i) {
-        ASSERT(s.Put(TestNode{i * 2 + 1}, 2, std::chrono::seconds{8192},
+        ASSERT(s.Put(TestNode{i * 2 + 1}, 0, std::chrono::seconds{8192},
                      func_nothing2));
         s.WakeCustomer();
       }
