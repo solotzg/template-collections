@@ -6,6 +6,9 @@ set(CMAKE_CXX_STANDARD 17)
 string(TOUPPER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE_UC)
 message( STATUS "Build type `${CMAKE_BUILD_TYPE_UC}`")
 
+set (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O3")
+set (CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -O3")
+
 include (cmake/utils.cmake)
 include (cmake/linker.cmake)
 add_subdirectory (contrib)
