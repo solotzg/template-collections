@@ -9,6 +9,21 @@
 struct BasicConfig {
   static constexpr size_t CPU_CACHE_LINE_SIZE = 64;
 };
+template <typename Base, size_t alignment> struct AlignedStruct {
+  template <typename... Args>
+  AlignedStruct(Args &&...args) : base_{std::forward<Args>(args)...} {}
+
+  Base &base() { return base_; }
+  const Base &base() const { return base_; }
+  Base *operator->() { return &base_; }
+  const Base *operator->() const { return &base_; }
+  Base &operator*() { return base_; }
+  const Base &operator*() const { return base_; }
+
+  // Wrapped with struct to guarantee that it is aligned to `alignment`
+  // DO NOT need padding byte
+  alignas(alignment) Base base_;
+};
 
 class MutexLockWrap {
 public:
@@ -27,13 +42,13 @@ protected:
     return std::unique_lock(mutex());
   }
 
-  Mutex &mutex() const { return mutex_; }
+  Mutex &mutex() const { return *mutex_; }
 
 private:
-  mutable Mutex mutex_;
+  mutable AlignedStruct<Mutex, BasicConfig::CPU_CACHE_LINE_SIZE> mutex_;
 };
 
-class SharedMutexLockWrap {
+class alignas(BasicConfig::CPU_CACHE_LINE_SIZE) SharedMutexLockWrap {
 public:
   using Mutex = std::shared_mutex;
 
@@ -46,10 +61,21 @@ protected:
     return std::unique_lock(mutex());
   }
 
-  Mutex &mutex() const { return mutex_; }
+  Mutex &mutex() const { return *mutex_; }
 
 private:
-  mutable Mutex mutex_;
+  mutable AlignedStruct<Mutex, BasicConfig::CPU_CACHE_LINE_SIZE> mutex_;
+};
+
+class MutexCondVarWrap : public MutexLockWrap {
+public:
+  using CondVar = std::condition_variable;
+
+protected:
+  CondVar &cv() const { return *cv_; }
+
+private:
+  mutable AlignedStruct<CondVar, BasicConfig::CPU_CACHE_LINE_SIZE> cv_;
 };
 
 struct AsyncNotifier {
@@ -71,7 +97,7 @@ struct AsyncNotifier {
   virtual ~AsyncNotifier() = default;
 };
 
-struct Notifier final : AsyncNotifier, MutexLockWrap {
+struct Notifier final : AsyncNotifier, MutexCondVarWrap {
   Status BlockedWaitFor(const std::chrono::milliseconds &timeout) override {
     return BlockedWaitUtil(std::chrono::steady_clock::now() + timeout);
   }
@@ -81,15 +107,15 @@ struct Notifier final : AsyncNotifier, MutexLockWrap {
     // if flag from false to false, wait for notification.
     // if flag from true to false, do nothing.
     auto res = AsyncNotifier::Status::Normal;
-    if (!is_awake_.exchange(false, std::memory_order_acq_rel)) {
+    if (!is_awake_->exchange(false, std::memory_order_acq_rel)) {
       {
         auto lock = GenUniqueLock();
-        if (!is_awake_.load(std::memory_order_acquire)) {
-          if (cv_.wait_until(lock, time_point) == std::cv_status::timeout)
+        if (!is_awake_->load(std::memory_order_acquire)) {
+          if (cv().wait_until(lock, time_point) == std::cv_status::timeout)
             res = AsyncNotifier::Status::Timeout;
         }
       }
-      is_awake_.store(false, std::memory_order_release);
+      is_awake_->store(false, std::memory_order_release);
     }
     return res;
   }
@@ -100,25 +126,24 @@ struct Notifier final : AsyncNotifier, MutexLockWrap {
     if (IsAwake()) {
       return;
     }
-    if (!is_awake_.exchange(true, std::memory_order_acq_rel)) {
+    if (!is_awake_->exchange(true, std::memory_order_acq_rel)) {
       // wake up notifier
       auto _ = GenLockGuard();
-      cv_.notify_one();
+      cv().notify_one();
     }
   }
 
   bool IsAwake() const override {
-    return is_awake_.load(std::memory_order_acquire);
+    return is_awake_->load(std::memory_order_acquire);
   }
 
   virtual ~Notifier() = default;
 
 private:
-  mutable std::condition_variable cv_;
   // multi notifiers single receiver model. use another flag to avoid waiting
   // endlessly.
-  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) mutable std::atomic_bool is_awake_{
-      false};
+  mutable AlignedStruct<std::atomic_bool, BasicConfig::CPU_CACHE_LINE_SIZE>
+      is_awake_{false};
 };
 
 static uint32_t NextPow2(uint32_t v) {
@@ -134,18 +159,17 @@ static uint32_t NextPow2(uint32_t v) {
   return v;
 }
 
-struct Waiter : MutexLockWrap {
+struct Waiter : MutexCondVarWrap {
   void Wait() {
     auto lock = GenUniqueLock();
-    cv_.wait(lock, [&] { return start_; });
+    cv().wait(lock, [&] { return start_; });
   }
   void WakeAll() {
     auto lock = GenLockGuard();
     start_ = true;
-    cv_.notify_all();
+    cv().notify_all();
   }
 
 protected:
-  std::condition_variable cv_;
   bool start_ = false;
 };
