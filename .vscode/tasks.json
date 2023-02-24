@@ -210,13 +210,13 @@
         {
             "label": "fmt",
             "type": "shell",
-            "command": ".vscode/format-diff.py",
+            "command": "${workspaceFolder}/.vscode/format.py",
             "problemMatcher": []
         },
         {
             "label": "cmake-fmt",
             "type": "shell",
-            "command": "cmake-format -i ${file}",
+            "command": "cmake-format -i ${file}", // `python3 -m pip install cmakelang`
             "problemMatcher": []
         }
     ]

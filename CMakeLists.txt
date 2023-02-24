@@ -15,8 +15,7 @@ include(cmake/linker.cmake)
 
 set(BUILD_INFO ${CMAKE_CURRENT_BINARY_DIR}/utils/version.h)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/utils/version.h.in ${BUILD_INFO})
-add_library(version ${BUILD_INFO}
-                    ${CMAKE_CURRENT_SOURCE_DIR}/utils/build_info.cpp)
+add_library(version ${CMAKE_CURRENT_SOURCE_DIR}/utils/build_info.cpp)
 target_include_directories(version PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/utils)
 
 add_subdirectory(contrib)
@@ -24,11 +23,11 @@ add_subdirectory(contrib)
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pthread")
 
 add_library(utils ${PROJECT_SOURCE_DIR}/utils/utils.cpp)
-add_target_pch("${PROJECT_SOURCE_DIR}/utils/utils.h" utils)
+add_target_pch("${PROJECT_SOURCE_DIR}/utils/pch.h" utils)
 target_link_libraries(utils fmt::fmt version)
 
 add_executable(CPPTest main.cpp)
-add_target_pch("${PROJECT_SOURCE_DIR}/utils/utils.h" CPPTest)
+add_target_pch("${PROJECT_SOURCE_DIR}/utils/pch.h" CPPTest)
 target_include_directories(CPPTest PUBLIC ${PROJECT_SOURCE_DIR})
 target_link_libraries(CPPTest utils)
 
