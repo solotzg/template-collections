@@ -91,6 +91,7 @@
 #include <shared_mutex>
 #endif
 
+#include "build_info.h"
 #include "head_template.h"
 #include "scope_guard.h"
 
@@ -113,3 +114,5 @@ template <class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template <class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 template <class T> struct always_false : std::false_type {};
 } // namespace variant_op
+
+void ShowBuildInfo(std::ostream &os);

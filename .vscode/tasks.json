@@ -212,6 +212,12 @@
             "type": "shell",
             "command": ".vscode/format-diff.py",
             "problemMatcher": []
+        },
+        {
+            "label": "cmake-fmt",
+            "type": "shell",
+            "command": "cmake-format -i ${file}",
+            "problemMatcher": []
         }
     ]
 }

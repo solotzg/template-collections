@@ -15,3 +15,10 @@ TimeCost::~TimeCost() { Show("END"); }
 void TimeCost::Reset() { start_ = Clock::now(); }
 
 TimeCost::Clock::duration TimeCost::Duration() { return Clock::now() - start_; }
+
+void ShowBuildInfo(std::ostream &os) {
+  os << "Release Version: " << BuildInfo::ReleaseVersion() << std::endl
+     << "Git Commit Hash: " << BuildInfo::GitHash() << std::endl
+     << "Git Branch:      " << BuildInfo::GitBranch() << std::endl
+     << "UTC Build Time:  " << BuildInfo::BuildTime() << std::endl;
+}
