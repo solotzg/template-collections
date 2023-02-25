@@ -38,8 +38,10 @@ template <typename T> struct MPMCNormal : MutexLockWrap {
     rp(i, producer_size_) queues_[i].~Data();
     std::allocator<Data>{}.deallocate(queues_, producer_size_);
   }
-  bool Put(T &&v, size_t index) { return queues_[index].emplace(std::move(v)); }
-  template <typename CB> bool Get(CB &&cb) {
+  bool TryPut(T &&v, size_t index) {
+    return queues_[index].emplace(std::move(v));
+  }
+  template <typename CB> bool TryGet(CB &&cb) {
     const auto ori_index = round_robin_index_;
     auto &&func = [&](size_t end) -> std::optional<T> {
       std::optional<T> res;
@@ -118,17 +120,27 @@ void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
   MPMCNormal<BenchNode> mpmc_worker(producer_size, producer_cap);
   std::list<std::thread> producer_runners;
   Waiter waiter;
+  AlignedStruct<std::atomic_uint64_t, BasicConfig::CPU_CACHE_LINE_SIZE>
+      tol_full_cnt{};
+
   rp(id, producer_size) {
     producer_runners.emplace_back([&, id]() {
+      auto full_cnt = 0;
       waiter.Wait();
       for (int i = 0; i < test_loop; ++i) {
-        while (!mpmc_worker.Put(int(id), id)) {
+        while (!mpmc_worker.TryPut(int(id), id)) {
+          ++full_cnt;
           std::this_thread::yield();
         }
       }
+      *tol_full_cnt += full_cnt;
     });
   }
   waiter.WakeAll();
+
+  size_t empty_cnt = 0;
+  SCOPE_EXIT(
+      { FMSGLN("    [full_cnt={}][empty_cnt={}]", *tol_full_cnt, empty_cnt); });
 
   TimeCost time_cost{__FUNCTION__};
 
@@ -137,14 +149,15 @@ void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
   const int64_t expect_res =
       producer_size * (producer_size - 1) / 2 * test_loop;
   for (;;) {
-    auto x = mpmc_worker.Get([&](BenchNode &&v) { res += *v; });
+    auto x = mpmc_worker.TryGet([&](BenchNode &&v) { res += *v; });
+    if (!x) {
+      ++empty_cnt;
+      std::this_thread::yield();
+      continue;
+    }
     cnt += x;
     if (cnt >= producer_size * test_loop) {
       break;
-    }
-    if (0 == x) {
-      std::this_thread::yield();
-      continue;
     }
   }
 
@@ -160,17 +173,26 @@ void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
                                                           producer_cap);
   std::list<std::thread> producer_runners;
   Waiter waiter;
+  AlignedStruct<std::atomic_uint64_t, BasicConfig::CPU_CACHE_LINE_SIZE>
+      tol_full_cnt{};
   rp(id, producer_size) {
     producer_runners.emplace_back([&, id]() {
+      auto full_cnt = 0;
       waiter.Wait();
       for (int i = 0; i < test_loop; ++i) {
         while (!mpsc_worker.TryPut(int(id), id)) {
+          ++full_cnt;
           std::this_thread::yield();
         }
       }
+      *tol_full_cnt += full_cnt;
     });
   }
   waiter.WakeAll();
+
+  size_t empty_cnt = 0;
+  SCOPE_EXIT(
+      { FMSGLN("    [full_cnt={}][empty_cnt={}]", *tol_full_cnt, empty_cnt); });
 
   TimeCost time_cost{__FUNCTION__};
 
@@ -184,14 +206,15 @@ void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
           res += *v;
           // MSGLN(v);
         },
-        [](size_t) {}, 8192);
+        [](size_t) {}, 1024 * 4);
+    if (!x) {
+      ++empty_cnt;
+      std::this_thread::yield();
+      continue;
+    }
     cnt += x;
     if (cnt >= producer_size * test_loop) {
       break;
-    }
-    if (x == 0) {
-      std::this_thread::yield();
-      continue;
     }
   }
 
@@ -240,6 +263,7 @@ void bench_mpsc_awake(size_t producer_size, size_t test_loop,
     auto x = mpsc_worker.Get(
         [&](BenchNode &&v, [[maybe_unused]] size_t producer_index) {
           res += *v;
+          // It may affect performance if producer is much faster than customer.
           // mpsc_worker.WakeProducer(producer_index);
         },
         [&](size_t empty_producer_index) {
@@ -261,19 +285,58 @@ void bench_mpsc_awake(size_t producer_size, size_t test_loop,
   RUNTIME_ASSERT(cnt == producer_size * test_loop);
 }
 
-void bench_mpsc(size_t producer_size, size_t test_loop, size_t producer_cap) {
+enum class Mode {
+  ALL,
+  STL,
+  AWAKE,
+  SPIN,
+};
+
+void bench_mpsc(size_t producer_size, size_t test_loop, size_t producer_cap,
+                Mode mode) {
   RUNTIME_ASSERT(producer_size + 1 <= std::thread::hardware_concurrency());
 #define M(fn_name) fn_name(producer_size, test_loop, producer_cap)
-  M(bench_mpsc_normal_stl);
-  M(bench_mpsc_awake);
-  M(bench_mpsc_spin_loop);
+  switch (mode) {
+  case Mode::ALL: {
+    M(bench_mpsc_normal_stl);
+    M(bench_mpsc_awake);
+    M(bench_mpsc_spin_loop);
+    break;
+  }
+  case Mode::STL: {
+    M(bench_mpsc_normal_stl);
+    break;
+  }
+  case Mode::AWAKE: {
+    M(bench_mpsc_awake);
+    break;
+  }
+  case Mode::SPIN: {
+    M(bench_mpsc_spin_loop);
+    break;
+  }
+  }
 #undef M
 }
 
 } // namespace bench
 
-int main() {
+int main(int argc, char **argv) {
   ShowBuildInfo(std::cout);
   MSGLN("------");
-  bench::bench_mpsc(7, 1024 * 1024 * 4, 1024);
+  bench::Mode mode{};
+  if (argc > 1) {
+    if (std::string_view sv = argv[1]; sv == "ALL") {
+      mode = bench::Mode::ALL;
+    } else if (sv == "STL") {
+      mode = bench::Mode::STL;
+    } else if (sv == "AWAKE") {
+      mode = bench::Mode::AWAKE;
+    } else if (sv == "SPIN") {
+      mode = bench::Mode::SPIN;
+    } else {
+      return 0;
+    }
+  }
+  bench::bench_mpsc(7, 1024 * 1024 * 4, 1024, mode);
 }
