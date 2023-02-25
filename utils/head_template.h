@@ -31,7 +31,7 @@ template <typename T, typename UP> struct OperatorWithModulo {
 
   static inline void sadd_mod(T &a, T b, T mod) { a = add_mod(a, b, mod); }
 
-  static inline T pow_mod(T a, T b, T mod) {
+  static inline T pow_mod(T a, int64_t b, T mod) {
     T r = 1, p = a;
     while (b) {
       if (b & 1)

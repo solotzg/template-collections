@@ -164,6 +164,7 @@ typedef __int128 INT128;
 #define ASSERT_LT(...)
 #define ASSERT_LE(...)
 #define ASSERT_NE(...)
+#define DEBUG_MSGLN(...)
 #else
 #define ASSERT(...) RUNTIME_ASSERT(__VA_ARGS__)
 #define ASSERT_EQ(...) RUNTIME_ASSERT_EQ(__VA_ARGS__)
@@ -172,6 +173,7 @@ typedef __int128 INT128;
 #define ASSERT_LT(...) RUNTIME_ASSERT_LT(__VA_ARGS__)
 #define ASSERT_LE(...) RUNTIME_ASSERT_LE(__VA_ARGS__)
 #define ASSERT_NE(...) RUNTIME_ASSERT_NE(__VA_ARGS__)
+#define DEBUG_MSGLN(...) MSGLN(__VA_ARGS__)
 #endif
 
 #define SHOW_TIME_COST                                                         \
