@@ -1,15 +1,15 @@
 #include "utils/mpsc_base.hpp"
 
 namespace bench {
-template <typename T> struct BenchNode {
-  BenchNode(const BenchNode &) = delete;
-  BenchNode(T &&val) : val_(std::move(val)) { inc_cnt(); }
-  ~BenchNode() { dec_cnt(); }
-  BenchNode(BenchNode &&src) {
+template <typename T> struct TestNode {
+  TestNode(const TestNode &) = delete;
+  TestNode(T &&val) : val_(std::move(val)) { inc_cnt(); }
+  ~TestNode() { dec_cnt(); }
+  TestNode(TestNode &&src) {
     inc_cnt();
     val_ = std::move(src.val_);
   }
-  BenchNode &operator=(BenchNode &&src) {
+  TestNode &operator=(TestNode &&src) {
     inc_cnt();
     val_ = std::move(src.val_);
     return *this;
@@ -22,6 +22,11 @@ template <typename T> struct BenchNode {
   static void dec_cnt() { test_node_cnt()--; }
   T val_{};
 };
+
+using BenchElementType = int;
+using BenchNode = AlignedStruct<BenchElementType, alignof(BenchElementType)>;
+// using BenchNode =
+//     AlignedStruct<BenchElementType, BasicConfig::CPU_CACHE_LINE_SIZE>;
 
 template <typename T> struct MPMCNormal : MutexLockWrap {
   MPMCNormal(size_t producer_size, size_t producer_cap)
@@ -105,19 +110,19 @@ private:
 
   const size_t producer_size_;
   Data *queues_;
-  size_t round_robin_index_{};
+  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) size_t round_robin_index_{};
 };
 
 void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
                            size_t producer_cap) {
-  MPMCNormal<int> mpmc_worker(producer_size, producer_cap);
+  MPMCNormal<BenchNode> mpmc_worker(producer_size, producer_cap);
   std::list<std::thread> producer_runners;
   Waiter waiter;
   rp(id, producer_size) {
     producer_runners.emplace_back([&, id]() {
       waiter.Wait();
       for (int i = 0; i < test_loop; ++i) {
-        while (!mpmc_worker.Put(id, id)) {
+        while (!mpmc_worker.Put(int(id), id)) {
           std::this_thread::yield();
         }
       }
@@ -127,17 +132,19 @@ void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
 
   TimeCost time_cost{__FUNCTION__};
 
-  volatile int64_t res = 0, cnt = 0;
+  volatile int64_t res = 0;
+  volatile int64_t cnt = 0;
   const int64_t expect_res =
       producer_size * (producer_size - 1) / 2 * test_loop;
   for (;;) {
-    auto x = mpmc_worker.Get([&](int v) { res += v; });
+    auto x = mpmc_worker.Get([&](BenchNode &&v) { res += *v; });
     cnt += x;
     if (cnt >= producer_size * test_loop) {
       break;
     }
     if (0 == x) {
       std::this_thread::yield();
+      continue;
     }
   }
 
@@ -149,15 +156,15 @@ void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
 
 void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
                           size_t producer_cap) {
-  MPSCQueueWithNotifer<MPSCWorker<int>> mpsc_worker(producer_size,
-                                                    producer_cap);
+  MPSCQueueWithNotifer<MPSCWorker<BenchNode>> mpsc_worker(producer_size,
+                                                          producer_cap);
   std::list<std::thread> producer_runners;
   Waiter waiter;
   rp(id, producer_size) {
     producer_runners.emplace_back([&, id]() {
       waiter.Wait();
       for (int i = 0; i < test_loop; ++i) {
-        while (!mpsc_worker.TryPut(id, id)) {
+        while (!mpsc_worker.TryPut(int(id), id)) {
           std::this_thread::yield();
         }
       }
@@ -167,23 +174,24 @@ void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
 
   TimeCost time_cost{__FUNCTION__};
 
-  volatile int64_t res = 0, cnt = 0;
+  volatile int64_t res = 0;
+  volatile int64_t cnt = 0;
   const int64_t expect_res =
       producer_size * (producer_size - 1) / 2 * test_loop;
   for (;;) {
     auto x = mpsc_worker.TryGet(
-        [&](int v, size_t) {
-          res += v;
+        [&](BenchNode &&v, size_t) {
+          res += *v;
           // MSGLN(v);
         },
         [](size_t) {}, 8192);
-    if (x == 0) {
-      std::this_thread::yield();
-      continue;
-    }
     cnt += x;
     if (cnt >= producer_size * test_loop) {
       break;
+    }
+    if (x == 0) {
+      std::this_thread::yield();
+      continue;
     }
   }
 
@@ -195,40 +203,43 @@ void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
 
 void bench_mpsc_awake(size_t producer_size, size_t test_loop,
                       size_t producer_cap) {
-  MPSCQueueWithNotifer<MPSCWorker<int>> mpsc_worker(producer_size,
-                                                    producer_cap);
+  MPSCQueueWithNotifer<MPSCWorker<BenchNode>> mpsc_worker(producer_size,
+                                                          producer_cap);
   std::list<std::thread> producer_runners;
   Waiter waiter;
-  std::atomic_uint64_t tol_full_cnt = 0;
+  AlignedStruct<std::atomic_uint64_t, BasicConfig::CPU_CACHE_LINE_SIZE>
+      tol_full_cnt{};
   rp(id, producer_size) {
     producer_runners.emplace_back([&, id]() {
       waiter.Wait();
       size_t full_cnt = 0;
       for (int i = 0; i < test_loop; ++i) {
-        auto res = mpsc_worker.Put(id, id, std::chrono::seconds{8192}, [&]() {
-          mpsc_worker.WakeCustomer();
-          ++full_cnt;
-        });
+        auto res =
+            mpsc_worker.Put(int(id), id, std::chrono::seconds{8192}, [&]() {
+              mpsc_worker.WakeCustomer();
+              ++full_cnt;
+            });
         RUNTIME_ASSERT(res);
         mpsc_worker.WakeCustomer();
       }
-      tol_full_cnt += full_cnt;
+      *tol_full_cnt += full_cnt;
     });
   }
   waiter.WakeAll();
 
   size_t empty_cnt = 0;
   SCOPE_EXIT(
-      { FMSGLN("    [full_cnt={}][empty_cnt={}]", tol_full_cnt, empty_cnt); });
+      { FMSGLN("    [full_cnt={}][empty_cnt={}]", *tol_full_cnt, empty_cnt); });
   TimeCost time_cost{__FUNCTION__};
 
-  volatile int64_t res = 0, cnt = 0;
+  volatile int64_t res = 0;
+  volatile int64_t cnt = 0;
   const int64_t expect_res =
       producer_size * (producer_size - 1) / 2 * test_loop;
   for (;;) {
     auto x = mpsc_worker.Get(
-        [&](int v, [[maybe_unused]] size_t producer_index) {
-          res += v;
+        [&](BenchNode &&v, [[maybe_unused]] size_t producer_index) {
+          res += *v;
           // mpsc_worker.WakeProducer(producer_index);
         },
         [&](size_t empty_producer_index) {
@@ -261,4 +272,8 @@ void bench_mpsc(size_t producer_size, size_t test_loop, size_t producer_cap) {
 
 } // namespace bench
 
-int main() { bench::bench_mpsc(7, 1024 * 1024 * 2, 1024); }
+int main() {
+  ShowBuildInfo(std::cout);
+  MSGLN("------");
+  bench::bench_mpsc(7, 1024 * 1024 * 4, 1024);
+}
