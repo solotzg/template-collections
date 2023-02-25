@@ -1,7 +1,6 @@
 #pragma once
 
-#include "head_template.h"
-#include "utils.hpp"
+#include "utils.h"
 #include <optional>
 #include <queue>
 #include <thread>
