@@ -31,7 +31,7 @@ template <typename T, typename UP> struct OperatorWithModulo {
 
   static inline void sadd_mod(T &a, T b, T mod) { a = add_mod(a, b, mod); }
 
-  static inline T pow_mod(T a, int64_t b, T mod) {
+  static inline T pow_mod(T a, uint64_t b, T mod) {
     T r = 1, p = a;
     while (b) {
       if (b & 1)
@@ -42,6 +42,28 @@ template <typename T, typename UP> struct OperatorWithModulo {
     return r;
   }
 };
+
+inline uint64_t fast_pow(uint64_t n, uint64_t pow) {
+  uint64_t r = 1, p = n;
+  while (pow) {
+    if (pow & 1)
+      r *= p;
+    p *= p;
+    pow >>= 1;
+  }
+  return r;
+}
+
+inline uint64_t fast_pow(uint64_t n, uint64_t pow, uint64_t mod) {
+  uint64_t r = 1, p = n;
+  while (pow) {
+    if (pow & 1)
+      r = r * p % mod;
+    p = p * p % mod;
+    pow >>= 1;
+  }
+  return r;
+}
 
 template <typename T, typename UP, const T MOD = 1000000007>
 struct ModuloOperator : OperatorWithModulo<T, UP> {

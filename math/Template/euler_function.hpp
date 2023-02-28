@@ -1,11 +1,17 @@
 #pragma once
 
-#include "utils/head_define.h"
-#include <cassert>
-#include <vector>
+#include "utils/utils.h"
 
-struct EulerFunction {
-  void init(size_t maxn = 100) {
+struct EulerFunction : noncopyable {
+  using Vec = std::vector<int>;
+
+  EulerFunction(size_t maxn) { init(maxn); }
+  const Vec &phi() const { return phi_; }
+  Vec::value_type phi(size_t index) const { return phi()[index]; }
+  const Vec &prime() const { return prime_; }
+
+private:
+  void init(size_t maxn) {
     phi_.resize(maxn + 1, 0);
     prime_.reserve(std::sqrt(maxn));
     std::vector<bool> vis;
@@ -29,26 +35,20 @@ struct EulerFunction {
       }
     }
   }
-  std::vector<int> &phi() { return phi_; }
-  std::vector<int> &prime() { return prime_; }
 
 private:
-  std::vector<int> phi_, prime_;
+  Vec phi_;
+  Vec prime_;
 };
 
 #ifndef NDEBUG
 namespace tests {
 static void _test_euler_function() {
-  EulerFunction euler_function;
-  euler_function.init(10);
-  assert((euler_function.prime() == std::vector{2, 3, 5, 7}));
-  std::vector<int> d;
-  for (int x = 7; x != 1;) {
-    d.emplace_back(x);
-    x = euler_function.phi()[x];
+  EulerFunction euler_function{20};
+  assert((euler_function.prime() == std::vector{2, 3, 5, 7, 11, 13, 17, 19}));
+  for (auto &&p : euler_function.prime()) {
+    ASSERT_EQ(euler_function.phi(p), p - 1);
   }
-  d.emplace_back(1);
-  assert((d == std::vector{7, 6, 2, 1}));
 }
 } // namespace tests
 #endif

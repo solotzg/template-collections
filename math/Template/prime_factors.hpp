@@ -1,11 +1,12 @@
 #pragma once
 
-#include "utils/head_define.h"
+#include "utils/head_template.h"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <numeric>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
@@ -32,6 +33,7 @@ template <typename T> struct Factors : std::vector<Factor<T>> {
 
 template <typename T> struct FactorMap {
   using Factors = Factors<T>;
+  using Self = FactorMap;
 
   void add(T num, size_t cnt) { data_[num] += cnt; }
   FactorMap &operator*=(size_t cnt) {
@@ -70,6 +72,14 @@ template <typename T> struct FactorMap {
       ss << "(" << k << ":" << v << ")";
     }
     return ss.str();
+  }
+
+  double ToCompVal() const {
+    return std::accumulate(data_.begin(), data_.end(), 0.0,
+                           [](auto res, auto &&x) {
+                             auto &&[k, v] = x;
+                             return res + v * std::log(k);
+                           });
   }
 
   using Data = std::unordered_map<T, size_t>;
@@ -214,17 +224,6 @@ private:
   std::vector<bool> is_prime_;
   std::vector<T> primes_;
 };
-
-inline uint64_t fast_pow(uint64_t a, uint64_t b) {
-  uint64_t r = 1, p = a;
-  while (b) {
-    if (b & 1)
-      r *= p;
-    p *= p;
-    b >>= 1;
-  }
-  return r;
-}
 
 #ifndef NDEBUG
 namespace tests {
