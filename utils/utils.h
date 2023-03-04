@@ -20,6 +20,7 @@ template <typename Base, size_t alignment> struct AlignedStruct {
   Base &operator*() { return base_; }
   const Base &operator*() const { return base_; }
 
+private:
   // Wrapped with struct to guarantee that it is aligned to `alignment`
   // DO NOT need padding byte
   alignas(alignment) Base base_;
