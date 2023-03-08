@@ -144,8 +144,8 @@ void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
 
   TimeCost time_cost{__FUNCTION__};
 
-  volatile int64_t res = 0;
-  volatile int64_t cnt = 0;
+  std::atomic_int64_t res = 0;
+  std::atomic_int64_t cnt = 0;
   const int64_t expect_res =
       producer_size * (producer_size - 1) / 2 * test_loop;
   for (;;) {
@@ -196,8 +196,8 @@ void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
 
   TimeCost time_cost{__FUNCTION__};
 
-  volatile int64_t res = 0;
-  volatile int64_t cnt = 0;
+  std::atomic_int64_t res = 0;
+  std::atomic_int64_t cnt = 0;
   const int64_t expect_res =
       producer_size * (producer_size - 1) / 2 * test_loop;
   for (;;) {
@@ -255,8 +255,8 @@ void bench_mpsc_awake(size_t producer_size, size_t test_loop,
       { FMSGLN("    [full_cnt={}][empty_cnt={}]", *tol_full_cnt, empty_cnt); });
   TimeCost time_cost{__FUNCTION__};
 
-  volatile int64_t res = 0;
-  volatile int64_t cnt = 0;
+  std::atomic_int64_t res = 0;
+  std::atomic_int64_t cnt = 0;
   const int64_t expect_res =
       producer_size * (producer_size - 1) / 2 * test_loop;
   for (;;) {
