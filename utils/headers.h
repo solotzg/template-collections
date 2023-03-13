@@ -91,6 +91,8 @@
 #include <shared_mutex>
 #endif
 
+#include <bit>
+
 #include "build_info.h"
 #include "head_template.h"
 #include "scope_guard.h"
