@@ -4,5 +4,6 @@
         "--background-index",
         "-pretty",
         "--log=info"
-    ]
+    ],
+    "clangd.path": "${workspaceFolder}/.vscode/clangd"
 }
