@@ -36,6 +36,7 @@ typedef __int128 INT128;
 
 #define FLATTEN_INLINE_PURE static __attribute__((flatten, always_inline, pure))
 #define ALWAYS_INLINE static __attribute__((always_inline))
+#define NO_INLINE __attribute__((__noinline__))
 
 #define CAT(a, b) CONCAT(a, b)
 #define FIRST(first, ...) first
