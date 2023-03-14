@@ -1,10 +1,8 @@
 #pragma once
 
-#include "headers.h"
-#include <chrono>
-#include <condition_variable>
-#include <mutex>
-#include <shared_mutex>
+#include "build_info.h"
+#include "head_template.h"
+#include "scope_guard.h"
 
 struct BasicConfig {
   static constexpr size_t CPU_CACHE_LINE_SIZE = 64;

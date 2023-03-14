@@ -1,7 +1,6 @@
 #pragma once
 
-#include <cstdint>
-#include <vector>
+#include "stl_headers.h"
 
 #define CONCAT_(prefix, suffix) prefix##suffix
 #define CONCAT(prefix, suffix) CONCAT_(prefix, suffix)
