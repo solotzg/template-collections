@@ -99,14 +99,14 @@ struct Timer {
 
   TaskPtr Schedule(typename Task::Func &&task, const Delay &delay) {
     auto res = std::make_shared<Task>(std::move(task));
-    queue_.Add(delay, res);
+    queue().Add(delay, res);
     notifier_.Wake();
     return res;
   }
 
   TimePoint GetNextTimePoint() const {
     TimePoint tp;
-    queue_.InvokeTop([&](const Node *ele) {
+    queue().InvokeTop([&](const Node *ele) {
       if (ele) {
         tp = ele->time_point();
       } else
@@ -123,14 +123,14 @@ struct Timer {
       }
     }
     assert(stop_);
-    queue_.Run([&](Node &&node) { node.task_->Run(true /*stop task*/); },
-               TimePoint::max() /*always expire*/);
-    assert(queue_.Empty());
+    queue().Run([&](Node &&node) { node.task_->Run(true /*stop task*/); },
+                TimePoint::max() /*always expire*/);
+    assert(queue().Empty());
   }
 
   size_t RunOneRound() {
     size_t task_cnt = 0;
-    queue_.Run([&](Node &&node) {
+    queue().Run([&](Node &&node) {
       node.task_->Run(stop_.load(std::memory_order_relaxed));
       ++task_cnt;
     });
@@ -162,12 +162,16 @@ struct Timer {
   ~Timer() { StopAndWait(); }
 
 private:
+  Queue &queue() { return *queue_; }
+  const Queue &queue() const { return *queue_; }
+
+private:
   const Delay default_tick_;
   std::atomic_bool stop_{};
   std::unique_ptr<std::thread> context_;
   // cache unfriendly
-  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) Notifier notifier_;
-  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) Queue queue_;
+  Notifier notifier_;
+  AlignedStruct<Queue, BasicConfig::CPU_CACHE_LINE_SIZE> queue_;
 };
 
 #ifndef NDEBUG

@@ -88,17 +88,17 @@ template <typename T, typename Allocator = std::allocator<T>> struct SPSCQueue {
 
   ~SPSCQueue() {
     while (!IsEmpty()) {
-      auto cur = head_.load(std::memory_order_relaxed);
+      auto cur = head().load(std::memory_order_relaxed);
       buff_.Pop(cur);
-      head_.store((cur + 1) & buffer_mask_, std::memory_order_release);
+      head().store((cur + 1) & buffer_mask_, std::memory_order_release);
     }
     buff_.Clear(max_num_, allocator_);
   }
 
   void Format(fmt::memory_buffer &out) const {
     bool is_first = true;
-    for (auto cur = head_.load(std::memory_order_relaxed);
-         cur != tail_.load(std::memory_order_acquire);
+    for (auto cur = head().load(std::memory_order_relaxed);
+         cur != tail().load(std::memory_order_acquire);
          cur = (cur + 1) & buffer_mask_) {
       FMT_IF_APPEND(out, !is_first, ", ");
       FMT_APPEND(out, "`{}`", buff_[cur]);
@@ -112,10 +112,10 @@ template <typename T, typename Allocator = std::allocator<T>> struct SPSCQueue {
 
 protected:
   bool IsEmpty() {
-    auto cur = head_.load(std::memory_order_relaxed);
-    if (cur == tail_cache_) {
-      tail_cache_ = tail_.load(std::memory_order_acquire);
-      if (cur == tail_cache_)
+    auto cur = head().load(std::memory_order_relaxed);
+    if (cur == tail_cache()) {
+      tail_cache() = tail().load(std::memory_order_acquire);
+      if (cur == tail_cache())
         return true;
     }
     return false;
@@ -137,11 +137,11 @@ protected:
   }
 
   bool IsFull() {
-    auto cur = tail_.load(std::memory_order_relaxed);
+    auto cur = tail().load(std::memory_order_relaxed);
     auto next = (cur + 1) & buffer_mask_;
-    if (next == head_cache_) {
-      head_cache_ = head_.load(std::memory_order_acquire);
-      if (next == head_cache_) {
+    if (next == head_cache()) {
+      head_cache() = head().load(std::memory_order_acquire);
+      if (next == head_cache()) {
         return true;
       }
     }
@@ -151,19 +151,28 @@ protected:
   bool Put(T &&data) {
     if (IsFull())
       return false;
-    auto cur = tail_.load(std::memory_order_relaxed);
+    auto cur = tail().load(std::memory_order_relaxed);
     auto next = (cur + 1) & buffer_mask_;
     buff_.Set(cur, std::move(data));
-    tail_.store(next, std::memory_order_release);
+    tail().store(next, std::memory_order_release);
     return true;
   }
 
 private:
   template <typename F> void GetImpl(F &&f) {
-    auto cur = head_.load(std::memory_order_relaxed);
+    auto cur = head().load(std::memory_order_relaxed);
     buff_.PopImpl(cur, std::move(f));
-    head_.store((cur + 1) & buffer_mask_, std::memory_order_release);
+    head().store((cur + 1) & buffer_mask_, std::memory_order_release);
   }
+
+  std::atomic_size_t &head() { return *head_; }
+  const std::atomic_size_t &head() const { return *head_; }
+  std::atomic_size_t &tail() { return *tail_; }
+  const std::atomic_size_t &tail() const { return *tail_; }
+  size_t &head_cache() { return *head_cache_; }
+  const size_t &head_cache() const { return *head_cache_; }
+  size_t &tail_cache() { return *tail_cache_; }
+  const size_t &tail_cache() const { return *tail_cache_; }
 
 private:
   Allocator allocator_;
@@ -171,16 +180,10 @@ private:
   const size_t buffer_mask_;
   Buff buff_;
   /// Aligned to CPU cache line size
-  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) std::atomic_size_t head_{};
-  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) std::atomic_size_t tail_{};
-  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) size_t head_cache_{};
-  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) size_t tail_cache_{};
-  /*
-    Padding byte is used only when there is any member variables next.
-    If all those aligned member variables have been put at the end of struct,
-    padding byte is no need.
-  */
-  // [[maybe_unused]] alignas(BasicConfig::CPU_CACHE_LINE_SIZE) uint8_t pad_{};
+  AlignedStruct<std::atomic_size_t, BasicConfig::CPU_CACHE_LINE_SIZE> head_{};
+  AlignedStruct<std::atomic_size_t, BasicConfig::CPU_CACHE_LINE_SIZE> tail_{};
+  AlignedStruct<size_t, BasicConfig::CPU_CACHE_LINE_SIZE> head_cache_{};
+  AlignedStruct<size_t, BasicConfig::CPU_CACHE_LINE_SIZE> tail_cache_{};
 };
 
 template <typename SPSC> struct SPSCQueueWithNotifer {

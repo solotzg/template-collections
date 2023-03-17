@@ -30,7 +30,7 @@ using BenchNode = AlignedStruct<BenchElementType, alignof(BenchElementType)>;
 
 template <typename T> struct MPMCNormal : MutexLockWrap {
   MPMCNormal(size_t producer_size, size_t producer_cap)
-      : producer_size_(producer_size), producer_cap_(producer_cap) {
+      : producer_size_(producer_size) {
     queues_ = std::allocator<Data>{}.allocate(producer_size_);
     rp(i, producer_size_) new (queues_ + i) Data(producer_cap);
   }
@@ -42,11 +42,11 @@ template <typename T> struct MPMCNormal : MutexLockWrap {
     return queues_[index].emplace(std::move(v));
   }
   template <typename CB> bool TryGet(CB &&cb) {
-    const auto ori_index = round_robin_index_;
+    const auto ori_index = round_robin_index();
     auto &&func = [&](size_t end) -> std::optional<T> {
       std::optional<T> res;
-      for (; round_robin_index_ < end; ++round_robin_index_) {
-        auto &queue = queues_[round_robin_index_];
+      for (; round_robin_index() < end; ++round_robin_index()) {
+        auto &queue = queues_[round_robin_index()];
         auto res = queue.pop();
         if (res)
           return res;
@@ -55,7 +55,7 @@ template <typename T> struct MPMCNormal : MutexLockWrap {
     };
     auto res = func(producer_size_);
     if (!res) {
-      round_robin_index_ = 0;
+      round_robin_index() = 0;
       res = func(ori_index);
     }
     if (res) {
@@ -66,7 +66,9 @@ template <typename T> struct MPMCNormal : MutexLockWrap {
   }
 
 private:
-  const size_t producer_cap_;
+  size_t &round_robin_index() { return *round_robin_index_; }
+  const size_t &round_robin_index() const { return *round_robin_index_; }
+
   struct Data : MutexLockWrap {
     Data(size_t cap) : cap_(cap), cap_mask_(cap_ - 1) {
       RUNTIME_ASSERT_EQ(cap, NextPow2(cap));
@@ -112,7 +114,7 @@ private:
 
   const size_t producer_size_;
   Data *queues_;
-  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) size_t round_robin_index_{};
+  AlignedStruct<size_t, BasicConfig::CPU_CACHE_LINE_SIZE> round_robin_index_{};
 };
 
 void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,

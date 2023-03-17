@@ -119,18 +119,18 @@ protected:
 
     for (;;) {
       bool any_consumed = false;
-      const auto ori_queue_index = queue_round_robin_index_;
+      const auto ori_queue_index = queue_round_robin_index();
 
       auto &&func_loop = [&](const size_t end) {
-        for (; queue_round_robin_index_ < end && consume_cnt < max_consume_cnt;
-             ++queue_round_robin_index_) {
-          auto &spsc = spsc_queues_[queue_round_robin_index_];
+        for (; queue_round_robin_index() < end && consume_cnt < max_consume_cnt;
+             ++queue_round_robin_index()) {
+          auto &spsc = spsc_queues_[queue_round_robin_index()];
           if (auto t = spsc.GenCustomer().Get(); t) {
-            cb(std::move(*t), queue_round_robin_index_);
+            cb(std::move(*t), queue_round_robin_index());
             consume_cnt++;
             any_consumed = true;
           } else {
-            cb_empty(queue_round_robin_index_);
+            cb_empty(queue_round_robin_index());
           }
         }
       };
@@ -141,7 +141,7 @@ protected:
       }
       if (consume_cnt < max_consume_cnt) {
         // 0 ~ round robin start
-        queue_round_robin_index_ = 0;
+        queue_round_robin_index() = 0;
         func_loop(ori_queue_index);
       }
 
@@ -155,13 +155,18 @@ protected:
 
 private:
   MPSCWorker(const MPSCWorker &) = delete;
+  size_t &queue_round_robin_index() { return *queue_round_robin_index_; }
+  const size_t &queue_round_robin_index() const {
+    return *queue_round_robin_index_;
+  }
 
 private:
   const size_t producer_size_;
   AllocatorSPSC spsc_allocator_;
   SPSCQueueType *spsc_queues_;
   // writable
-  alignas(BasicConfig::CPU_CACHE_LINE_SIZE) size_t queue_round_robin_index_{};
+  AlignedStruct<size_t, BasicConfig::CPU_CACHE_LINE_SIZE>
+      queue_round_robin_index_{};
 };
 
 template <typename MPSC> struct MPSCQueueWithNotifer {

@@ -47,7 +47,7 @@ private:
   mutable AlignedStruct<Mutex, BasicConfig::CPU_CACHE_LINE_SIZE> mutex_;
 };
 
-class alignas(BasicConfig::CPU_CACHE_LINE_SIZE) SharedMutexLockWrap {
+class SharedMutexLockWrap {
 public:
   using Mutex = std::shared_mutex;
 
