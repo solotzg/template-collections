@@ -20,5 +20,7 @@ void ShowBuildInfo(std::ostream &os) {
   os << "Release Version: " << BuildInfo::ReleaseVersion() << std::endl
      << "Git Commit Hash: " << BuildInfo::GitHash() << std::endl
      << "Git Branch:      " << BuildInfo::GitBranch() << std::endl
-     << "Build Time:      " << BuildInfo::BuildTime() << std::endl;
+     << "Build Time:      " << BuildInfo::BuildTime() << std::endl
+     << "Features:        " << BuildInfo::Features() << std::endl
+     << "Profile:         " << BuildInfo::Profile() << std::endl;
 }

@@ -6,3 +6,7 @@
 #cmakedefine BUILD_TIME "@BUILD_TIME@"
 #cmakedefine GIT_BRANCH "@GIT_BRANCH@"
 #cmakedefine GIT_HASH "@GIT_HASH@"
+#cmakedefine01 ENABLE_THINLTO
+#cmakedefine CMAKE_BUILD_TYPE_UC "@CMAKE_BUILD_TYPE_UC@"
+#cmakedefine CMAKE_CXX_STANDARD "c++@CMAKE_CXX_STANDARD@"
+#cmakedefine01 ARCHNATIVE

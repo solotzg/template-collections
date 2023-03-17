@@ -41,6 +41,15 @@ protected:
     return std::unique_lock(mutex());
   }
 
+  template <typename F> auto RunWithMutexLock(F &&f) const {
+    auto lock = GenLockGuard();
+    return f();
+  }
+  template <typename F> auto RunWithUniqueLock(F &&f) const {
+    auto lock = GenUniqueLock();
+    return f(lock);
+  }
+
   Mutex &mutex() const { return *mutex_; }
 
 private:
@@ -107,13 +116,12 @@ struct Notifier final : AsyncNotifier, MutexCondVarWrap {
     // if flag from true to false, do nothing.
     auto res = AsyncNotifier::Status::Normal;
     if (!is_awake_->exchange(false, std::memory_order_acq_rel)) {
-      {
-        auto lock = GenUniqueLock();
+      RunWithUniqueLock([&](auto &lock) {
         if (!is_awake_->load(std::memory_order_acquire)) {
           if (cv().wait_until(lock, time_point) == std::cv_status::timeout)
             res = AsyncNotifier::Status::Timeout;
         }
-      }
+      });
       is_awake_->store(false, std::memory_order_release);
     }
     return res;
@@ -127,8 +135,7 @@ struct Notifier final : AsyncNotifier, MutexCondVarWrap {
     }
     if (!is_awake_->exchange(true, std::memory_order_acq_rel)) {
       // wake up notifier
-      auto _ = GenLockGuard();
-      cv().notify_one();
+      RunWithMutexLock([&] { cv().notify_one(); });
     }
   }
 
@@ -160,13 +167,20 @@ static uint32_t NextPow2(uint32_t v) {
 
 struct Waiter : MutexCondVarWrap {
   void Wait() {
-    auto lock = GenUniqueLock();
-    cv().wait(lock, [&] { return start_; });
+    RunWithUniqueLock(
+        [&](auto &lock) { cv().wait(lock, [&] { return start_; }); });
   }
   void WakeAll() {
-    auto lock = GenLockGuard();
-    start_ = true;
-    cv().notify_all();
+    RunWithMutexLock([&] {
+      start_ = true;
+      cv().notify_all();
+    });
+  }
+  void WakeOne() {
+    RunWithMutexLock([&] {
+      start_ = true;
+      cv().notify_one();
+    });
   }
 
 protected:
@@ -188,7 +202,9 @@ private:
 };
 
 namespace variant_op {
-template <class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
+template <class... Ts> struct overloaded : Ts... {
+  using Ts::operator()...;
+};
 template <class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 template <class T> struct always_false : std::false_type {};
 } // namespace variant_op

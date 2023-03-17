@@ -84,23 +84,25 @@ private:
     size_t capacity() const { return cap_; }
 
     bool emplace(T &&val) {
-      auto lock = GenLockGuard();
-      if (size_ >= cap_)
-        return false;
-      new (inner_ + end_) T(std::move(val));
-      end_ = (end_ + 1) & cap_mask_;
-      ++size_;
-      return true;
+      return RunWithMutexLock([&] {
+        if (size_ >= cap_)
+          return false;
+        new (inner_ + end_) T(std::move(val));
+        end_ = (end_ + 1) & cap_mask_;
+        ++size_;
+        return true;
+      });
     }
 
     std::optional<T> pop() {
-      auto lock = GenLockGuard();
-      if (0 == size_)
-        return std::nullopt;
-      auto index = begin_;
-      begin_ = (begin_ + 1) & cap_mask_;
-      --size_;
-      return std::move(inner_[index]);
+      return RunWithMutexLock([&]() -> std::optional<T> {
+        if (0 == size_)
+          return std::nullopt;
+        auto index = begin_;
+        begin_ = (begin_ + 1) & cap_mask_;
+        --size_;
+        return std::move(inner_[index]);
+      });
     }
 
   private:

@@ -16,20 +16,22 @@ struct Timer {
     Task(Func &&task) : task_(std::move(task)) {}
 
     bool Run(bool stop) {
-      auto _ = GenLockGuard();
-      if (over_)
-        return false;
-      task_(stop);
-      over_ = true;
-      return true;
+      return RunWithMutexLock([&] {
+        if (over_)
+          return false;
+        task_(stop);
+        over_ = true;
+        return true;
+      });
     }
 
     bool Cancel() {
-      auto _ = GenLockGuard();
-      if (over_)
-        return false;
-      over_ = true;
-      return true;
+      return RunWithMutexLock([&] {
+        if (over_)
+          return false;
+        over_ = true;
+        return true;
+      });
     }
 
   private:
@@ -51,23 +53,21 @@ struct Timer {
 
   struct Queue : MutexLockWrap {
     template <typename F> void InvokeTop(F &&f) const {
-      auto _ = GenLockGuard();
-
-      const Node *ele{};
-      if (!queue_.empty()) {
-        ele = &queue_.top();
-      }
-      f(ele);
+      RunWithMutexLock([&] {
+        const Node *ele{};
+        if (!queue_.empty()) {
+          ele = &queue_.top();
+        }
+        f(ele);
+      });
     }
 
     template <typename... _Args> void Add(_Args &&...__args) {
-      auto _ = GenLockGuard();
-      queue_.emplace(std::forward<_Args>(__args)...);
+      RunWithMutexLock([&] { queue_.emplace(std::forward<_Args>(__args)...); });
     }
 
     bool Empty() const {
-      auto _ = GenLockGuard();
-      return queue_.empty();
+      return RunWithMutexLock([&] { return queue_.empty(); });
     }
 
     template <typename F>
@@ -76,16 +76,18 @@ struct Timer {
       while (!stop) {
         stop = true;
         std::optional<Node> data;
-        {
-          auto _ = GenLockGuard();
+        auto empty = RunWithMutexLock([&] {
           if (queue_.empty())
-            break;
+            return true;
           auto &top = queue_.top();
           if (expire >= top.time_point()) {
             data = (std::move(top));
             queue_.pop();
           }
-        }
+          return false;
+        });
+        if (empty)
+          break;
         if (data) {
           f(std::move(*data));
           stop = false;
@@ -232,8 +234,7 @@ static void _test_timer() {
     timer.AsyncRun();
     struct Test : MutexLockWrap {
       void Add(int x) {
-        auto _ = GenLockGuard();
-        res.emplace_back(x);
+        RunWithMutexLock([&] { res.emplace_back(x); });
       }
       std::vector<int> res;
     } tests;
