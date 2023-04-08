@@ -51,12 +51,11 @@ if(USE_CCACHE
    AND NOT CMAKE_CXX_COMPILER_LAUNCHER MATCHES "ccache"
    AND NOT CMAKE_CXX_COMPILER MATCHES "ccache")
   execute_process(COMMAND ${CCACHE_FOUND} "-V" OUTPUT_VARIABLE CCACHE_VERSION)
-  execute_process(COMMAND ${CCACHE_FOUND} "-p" OUTPUT_VARIABLE CCACHE_CONFIG)
+  # execute_process(COMMAND ${CCACHE_FOUND} "-p" OUTPUT_VARIABLE CCACHE_CONFIG)
   string(REGEX REPLACE "ccache version ([0-9\\.]+).*" "\\1" CCACHE_VERSION
                        ${CCACHE_VERSION})
   message(STATUS "Using ccache: ${CCACHE_FOUND}, version ${CCACHE_VERSION}")
-  message(STATUS "Show ccache config:")
-  message("${CCACHE_CONFIG}")
+  # message(STATUS "Show ccache config:\n${CCACHE_CONFIG}")
   set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${CCACHE_FOUND})
   set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ${CCACHE_FOUND})
 

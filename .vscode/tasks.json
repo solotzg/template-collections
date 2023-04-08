@@ -210,7 +210,10 @@
         {
             "label": "fmt",
             "type": "shell",
-            "command": "${workspaceFolder}/.vscode/format.py",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/.vscode/format.py"
+            ],
             "problemMatcher": []
         },
         {
