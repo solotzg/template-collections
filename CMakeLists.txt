@@ -57,4 +57,8 @@ if(ENABLE_BENCHMARK AND NOT CMAKE_BUILD_TYPE_UC STREQUAL "DEBUG")
   add_subdirectory(bench)
 endif()
 
+if(CMAKE_BUILD_TYPE_UC STREQUAL "DEBUG")
+  add_subdirectory(example)
+endif()
+
 print_flags()

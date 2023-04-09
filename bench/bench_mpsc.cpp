@@ -1,4 +1,5 @@
-#include "utils/mpsc_base.hpp"
+#include "bench/bench.h"
+#include "utils/mpsc.hpp"
 
 namespace bench {
 template <typename T> struct TestNode {
@@ -24,19 +25,20 @@ template <typename T> struct TestNode {
 };
 
 using BenchElementType = int;
-using BenchNode = AlignedStruct<BenchElementType, alignof(BenchElementType)>;
+using BenchNode =
+    utils::AlignedStruct<BenchElementType, alignof(BenchElementType)>;
 // using BenchNode =
 //     AlignedStruct<BenchElementType, BasicConfig::CPU_CACHE_LINE_SIZE>;
 
-template <typename T> struct MPMCNormal : MutexLockWrap {
+template <typename T> struct MPMCNormal : utils::MutexLockWrap {
   MPMCNormal(size_t producer_size, size_t producer_cap)
       : producer_size_(producer_size) {
-    queues_ = std::allocator<Data>{}.allocate(producer_size_);
-    rp(i, producer_size_) new (queues_ + i) Data(producer_cap);
+    queues_.Allocate(producer_size_);
+    rp(i, producer_size_) queues_.New(i, producer_cap);
   }
   ~MPMCNormal() {
-    rp(i, producer_size_) queues_[i].~Data();
-    std::allocator<Data>{}.deallocate(queues_, producer_size_);
+    rp(i, producer_size_) queues_.Del(i);
+    queues_.Deallocate(producer_size_);
   }
   bool TryPut(T &&v, size_t index) {
     return queues_[index].emplace(std::move(v));
@@ -71,12 +73,12 @@ private:
 
   struct Data : MutexLockWrap {
     Data(size_t cap) : cap_(cap), cap_mask_(cap_ - 1) {
-      RUNTIME_ASSERT_EQ(cap, NextPow2(cap));
-      inner_ = std::allocator<T>{}.allocate(cap);
+      RUNTIME_ASSERT_EQ(cap, utils::NextPow2(cap));
+      inner_.Allocate(cap);
     }
     ~Data() {
-      rp(i, size_) inner_[(i + begin_) & cap_mask_].~T();
-      std::allocator<T>{}.deallocate(inner_, cap_);
+      rp(i, size_) inner_.Del((i + begin_) & cap_mask_);
+      inner_.Deallocate(cap_);
     }
     T &operator[](size_t index) { return inner_[index]; }
     const T &operator[](size_t index) const { return inner_[index]; }
@@ -87,7 +89,7 @@ private:
       return RunWithMutexLock([&] {
         if (size_ >= cap_)
           return false;
-        new (inner_ + end_) T(std::move(val));
+        inner_.New(end_, std::move(val));
         end_ = (end_ + 1) & cap_mask_;
         ++size_;
         return true;
@@ -111,20 +113,22 @@ private:
     size_t begin_{};
     size_t end_{};
     size_t size_{};
-    T *inner_{};
+    utils::ConstSizeArray<T> inner_;
   };
 
   const size_t producer_size_;
-  Data *queues_;
-  AlignedStruct<size_t, BasicConfig::CPU_CACHE_LINE_SIZE> round_robin_index_{};
+  utils::ConstSizeArray<Data> queues_;
+  utils::AlignedStruct<size_t, utils::BasicConfig::CPU_CACHE_LINE_SIZE>
+      round_robin_index_{};
 };
 
 void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
                            size_t producer_cap) {
   MPMCNormal<BenchNode> mpmc_worker(producer_size, producer_cap);
   std::list<std::thread> producer_runners;
-  Waiter waiter;
-  AlignedStruct<std::atomic_uint64_t, BasicConfig::CPU_CACHE_LINE_SIZE>
+  utils::Waiter waiter;
+  utils::AlignedStruct<std::atomic_uint64_t,
+                       utils::BasicConfig::CPU_CACHE_LINE_SIZE>
       tol_full_cnt{};
 
   rp(id, producer_size) {
@@ -146,7 +150,7 @@ void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
   SCOPE_EXIT(
       { FMSGLN("    [full_cnt={}][empty_cnt={}]", *tol_full_cnt, empty_cnt); });
 
-  TimeCost time_cost{__FUNCTION__};
+  utils::TimeCost time_cost{__FUNCTION__};
 
   std::atomic_int64_t res = 0;
   std::atomic_int64_t cnt = 0;
@@ -173,11 +177,12 @@ void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
 
 void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
                           size_t producer_cap) {
-  MPSCQueueWithNotifer<MPSCWorker<BenchNode>> mpsc_worker(producer_size,
-                                                          producer_cap);
+  utils::MPSCQueueWithNotifer<utils::MPSCWorker<BenchNode>> mpsc_worker(
+      producer_size, producer_cap);
   std::list<std::thread> producer_runners;
-  Waiter waiter;
-  AlignedStruct<std::atomic_uint64_t, BasicConfig::CPU_CACHE_LINE_SIZE>
+  utils::Waiter waiter;
+  utils::AlignedStruct<std::atomic_uint64_t,
+                       utils::BasicConfig::CPU_CACHE_LINE_SIZE>
       tol_full_cnt{};
   rp(id, producer_size) {
     producer_runners.emplace_back([&, id]() {
@@ -198,7 +203,7 @@ void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
   SCOPE_EXIT(
       { FMSGLN("    [full_cnt={}][empty_cnt={}]", *tol_full_cnt, empty_cnt); });
 
-  TimeCost time_cost{__FUNCTION__};
+  utils::TimeCost time_cost{__FUNCTION__};
 
   std::atomic_int64_t res = 0;
   std::atomic_int64_t cnt = 0;
@@ -230,24 +235,25 @@ void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
 
 void bench_mpsc_awake(size_t producer_size, size_t test_loop,
                       size_t producer_cap) {
-  MPSCQueueWithNotifer<MPSCWorker<BenchNode>> mpsc_worker(producer_size,
-                                                          producer_cap);
+  utils::Notifier mpsc_notifier;
+  utils::MPSCQueueWithNotifer<utils::MPSCWorker<BenchNode>> mpsc_worker(
+      producer_size, producer_cap);
   std::list<std::thread> producer_runners;
-  Waiter waiter;
-  AlignedStruct<std::atomic_uint64_t, BasicConfig::CPU_CACHE_LINE_SIZE>
+  utils::Waiter waiter;
+  utils::AlignedStruct<std::atomic_uint64_t,
+                       utils::BasicConfig::CPU_CACHE_LINE_SIZE>
       tol_full_cnt{};
   rp(id, producer_size) {
     producer_runners.emplace_back([&, id]() {
       waiter.Wait();
       size_t full_cnt = 0;
       for (int i = 0; i < test_loop; ++i) {
-        auto res =
-            mpsc_worker.Put(int(id), id, std::chrono::seconds{8192}, [&]() {
-              mpsc_worker.WakeCustomer();
-              ++full_cnt;
-            });
+        auto res = mpsc_worker.Put(int(id), id, [&]() {
+          mpsc_notifier.Wake();
+          ++full_cnt;
+        });
         RUNTIME_ASSERT(res);
-        mpsc_worker.WakeCustomer();
+        mpsc_notifier.Wake();
       }
       *tol_full_cnt += full_cnt;
     });
@@ -257,7 +263,7 @@ void bench_mpsc_awake(size_t producer_size, size_t test_loop,
   size_t empty_cnt = 0;
   SCOPE_EXIT(
       { FMSGLN("    [full_cnt={}][empty_cnt={}]", *tol_full_cnt, empty_cnt); });
-  TimeCost time_cost{__FUNCTION__};
+  utils::TimeCost time_cost{__FUNCTION__};
 
   std::atomic_int64_t res = 0;
   std::atomic_int64_t cnt = 0;
@@ -275,12 +281,12 @@ void bench_mpsc_awake(size_t producer_size, size_t test_loop,
           ++empty_cnt;
           //  MSGLN("wake producer", empty_producer_index);
         },
-        std::chrono::seconds{8192}, 4 * 1024);
+        4 * 1024, mpsc_notifier);
     cnt += x;
     if (cnt >= producer_size * test_loop) {
       break;
     }
-    rp(producer_index, producer_size) mpsc_worker.WakeProducer(producer_index);
+    mpsc_worker.WakeAllProducers();
   }
 
   for (auto &&t : producer_runners)
@@ -289,58 +295,30 @@ void bench_mpsc_awake(size_t producer_size, size_t test_loop,
   RUNTIME_ASSERT(cnt == producer_size * test_loop);
 }
 
-enum class Mode {
-  ALL,
-  STL,
-  AWAKE,
-  SPIN,
-};
-
-void bench_mpsc(size_t producer_size, size_t test_loop, size_t producer_cap,
-                Mode mode) {
-  RUNTIME_ASSERT(producer_size + 1 <= std::thread::hardware_concurrency());
-#define M(fn_name) fn_name(producer_size, test_loop, producer_cap)
-  switch (mode) {
-  case Mode::ALL: {
+void bench_mpsc(int argc, char **argv) {
+#define M(fn_name) fn_name(7, 1024 * 1024 * 4, 1024)
+  std::string mode_name = "";
+  std::string mode_str = "ALL";
+  if (argc > 0) {
+    mode_name = argv[0];
+    mode_str = utils::ToUpper(std::string_view{mode_name});
+  }
+  if (mode_str == "ALL") {
     M(bench_mpsc_normal_stl);
     M(bench_mpsc_awake);
     M(bench_mpsc_spin_loop);
-    break;
-  }
-  case Mode::STL: {
+  } else if (mode_str == "STL") {
     M(bench_mpsc_normal_stl);
-    break;
-  }
-  case Mode::AWAKE: {
+  } else if (mode_str == "AWAKE") {
     M(bench_mpsc_awake);
-    break;
-  }
-  case Mode::SPIN: {
+  } else if (mode_str == "SPIN") {
     M(bench_mpsc_spin_loop);
-    break;
-  }
+  } else {
+    PANIC("Unknown mode", mode_name);
   }
 #undef M
 }
 
 } // namespace bench
 
-int main(int argc, char **argv) {
-  ShowBuildInfo(std::cout);
-  MSGLN("------");
-  bench::Mode mode{};
-  if (argc > 1) {
-    if (std::string_view sv = argv[1]; sv == "ALL") {
-      mode = bench::Mode::ALL;
-    } else if (sv == "STL") {
-      mode = bench::Mode::STL;
-    } else if (sv == "AWAKE") {
-      mode = bench::Mode::AWAKE;
-    } else if (sv == "SPIN") {
-      mode = bench::Mode::SPIN;
-    } else {
-      return 0;
-    }
-  }
-  bench::bench_mpsc(7, 1024 * 1024 * 4, 1024, mode);
-}
+FUNC_FACTORY_REGISTER("MPSC", bench::bench_mpsc)

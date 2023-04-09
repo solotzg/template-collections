@@ -3,6 +3,23 @@
 #include "build_info.h"
 #include "head_template.h"
 #include "scope_guard.h"
+#include "thread-name.h"
+
+namespace utils {
+
+static constexpr Milliseconds MaxDuration = Seconds{72 * 3600}; // 72 hours
+
+struct AtomicNotifier;
+using AtomicNotifierPtr = std::shared_ptr<AtomicNotifier>;
+
+struct AsyncNotifier;
+using AsyncNotifierPtr = std::shared_ptr<AsyncNotifier>;
+
+struct Notifier;
+using NotifierPtr = std::shared_ptr<Notifier>;
+
+struct Waiter;
+using WaiterPtr = std::shared_ptr<Waiter>;
 
 struct BasicConfig {
   static constexpr size_t CPU_CACHE_LINE_SIZE = 64;
@@ -28,6 +45,21 @@ class MutexLockWrap {
 public:
   using Mutex = std::mutex;
 
+  template <typename F> auto RunWithMutexLock(F &&f) const {
+    auto lock = GenLockGuard();
+    return f();
+  }
+
+  template <typename F> auto RunWithUniqueLock(F &&f) const {
+    auto lock = GenUniqueLock();
+    return f(lock);
+  }
+
+  template <typename F> auto RunWithTryLock(F &&f) const {
+    auto lock = TryToLock();
+    return f(lock);
+  }
+
 protected:
   std::lock_guard<Mutex> GenLockGuard() const {
     return std::lock_guard(mutex());
@@ -39,15 +71,6 @@ protected:
 
   std::unique_lock<Mutex> GenUniqueLock() const {
     return std::unique_lock(mutex());
-  }
-
-  template <typename F> auto RunWithMutexLock(F &&f) const {
-    auto lock = GenLockGuard();
-    return f();
-  }
-  template <typename F> auto RunWithUniqueLock(F &&f) const {
-    auto lock = GenUniqueLock();
-    return f(lock);
   }
 
   Mutex &mutex() const { return *mutex_; }
@@ -87,39 +110,30 @@ private:
 };
 
 struct AsyncNotifier {
+  // thread safe
+  virtual bool IsAwake() const = 0;
+  virtual bool Wake() const = 0;
+};
+
+struct Notifier final : AsyncNotifier, MutexCondVarWrap {
   enum class Status {
     Timeout,
     Normal,
   };
-  // NOT thread safe
-  virtual Status BlockedWaitFor(const std::chrono::milliseconds &) {
-    return AsyncNotifier::Status::Timeout;
-  }
-  virtual Status
-  BlockedWaitUtil(const std::chrono::steady_clock::time_point &) {
-    return AsyncNotifier::Status::Timeout;
-  }
-  // thread safe
-  virtual bool IsAwake() const = 0;
-  virtual void Wake() const = 0;
-  virtual ~AsyncNotifier() = default;
-};
 
-struct Notifier final : AsyncNotifier, MutexCondVarWrap {
-  Status BlockedWaitFor(const std::chrono::milliseconds &timeout) override {
-    return BlockedWaitUtil(std::chrono::steady_clock::now() + timeout);
+  Status BlockedWaitFor(const Milliseconds &timeout) {
+    return BlockedWaitUtil(SteadyClock::now() + timeout);
   }
 
-  Status BlockedWaitUtil(
-      const std::chrono::steady_clock::time_point &time_point) override {
+  Status BlockedWaitUtil(const SteadyClock::time_point &time_point) {
     // if flag from false to false, wait for notification.
     // if flag from true to false, do nothing.
-    auto res = AsyncNotifier::Status::Normal;
+    auto res = Status::Normal;
     if (!is_awake_->exchange(false, std::memory_order_acq_rel)) {
       RunWithUniqueLock([&](auto &lock) {
         if (!is_awake_->load(std::memory_order_acquire)) {
           if (cv().wait_until(lock, time_point) == std::cv_status::timeout)
-            res = AsyncNotifier::Status::Timeout;
+            res = Status::Timeout;
         }
       });
       is_awake_->store(false, std::memory_order_release);
@@ -127,21 +141,36 @@ struct Notifier final : AsyncNotifier, MutexCondVarWrap {
     return res;
   }
 
-  void Wake() const override {
+  void BlockedWait() {
+    if (!is_awake_->exchange(false, std::memory_order_acq_rel)) {
+      RunWithUniqueLock([&](auto &lock) {
+        if (!is_awake_->load(std::memory_order_acquire)) {
+          cv().wait(lock);
+        }
+      });
+      is_awake_->store(false, std::memory_order_release);
+    }
+  }
+
+  bool Wake() const override {
     // if flag from false -> true, then wake up.
     // if flag from true -> true, do nothing.
     if (IsAwake()) {
-      return;
+      return false;
     }
     if (!is_awake_->exchange(true, std::memory_order_acq_rel)) {
       // wake up notifier
       RunWithMutexLock([&] { cv().notify_one(); });
+      return true;
     }
+    return false;
   }
 
   bool IsAwake() const override {
     return is_awake_->load(std::memory_order_acquire);
   }
+
+  static NotifierPtr New() { return std::make_shared<Notifier>(); }
 
   virtual ~Notifier() = default;
 
@@ -150,6 +179,68 @@ private:
   // endlessly.
   mutable AlignedStruct<std::atomic_bool, BasicConfig::CPU_CACHE_LINE_SIZE>
       is_awake_{false};
+};
+
+static inline std::ostream &operator<<(std::ostream &ostr,
+                                       Notifier::Status status) {
+  static const char *AsyncNotifierStatusNames[] = {"Timeout", "Normal"};
+  ostr << AsyncNotifierStatusNames[static_cast<int>(status)];
+  return ostr;
+}
+
+struct AtomicNotifier final : AsyncNotifier {
+  using Self = AtomicNotifier;
+
+  void BlockedWait() {
+    // if flag from false to false, wait for notification.
+    // if flag from true to false, do nothing.
+    if (!is_awake_->exchange(false, std::memory_order_acq_rel)) {
+      is_awake_->wait(false);
+      is_awake_->store(false, std::memory_order_release);
+    }
+  }
+
+  bool Wake() const override {
+    // if flag from false -> true, then wake up.
+    // if flag from true -> true, do nothing.
+    if (IsAwake()) {
+      return false;
+    }
+    if (!is_awake_->exchange(true, std::memory_order_acq_rel)) {
+      // wake up notifier
+      is_awake_->notify_one();
+      return true;
+    }
+    return false;
+  }
+
+  bool IsAwake() const override {
+    return is_awake_->load(std::memory_order_acquire);
+  }
+
+  static AtomicNotifierPtr New() { return std::make_shared<Self>(); }
+
+private:
+  mutable AlignedStruct<std::atomic_bool, BasicConfig::CPU_CACHE_LINE_SIZE>
+      is_awake_{false};
+};
+
+struct NotifierWap {
+protected:
+  const Notifier &notifier() const { return notifier_; }
+  Notifier &notifier() { return notifier_; }
+
+private:
+  Notifier notifier_;
+};
+
+struct AtomicNotifierWap {
+protected:
+  const AtomicNotifier &notifier() const { return notifier_; }
+  AtomicNotifier &notifier() { return notifier_; }
+
+private:
+  AtomicNotifier notifier_;
 };
 
 static uint32_t NextPow2(uint32_t v) {
@@ -165,40 +256,39 @@ static uint32_t NextPow2(uint32_t v) {
   return v;
 }
 
-struct Waiter : MutexCondVarWrap {
+struct Waiter {
   void Wait() {
-    RunWithUniqueLock(
-        [&](auto &lock) { cv().wait(lock, [&] { return start_; }); });
+    if (start_)
+      return;
+    start_.wait(false);
   }
   void WakeAll() {
-    RunWithMutexLock([&] {
-      start_ = true;
-      cv().notify_all();
-    });
+    start_ = true;
+    start_.notify_all();
   }
   void WakeOne() {
-    RunWithMutexLock([&] {
-      start_ = true;
-      cv().notify_one();
-    });
+    start_ = true;
+    start_.notify_one();
   }
+  static WaiterPtr New() { return std::make_shared<Waiter>(); }
 
 protected:
-  bool start_ = false;
+  std::atomic_bool start_{};
 };
 
 struct TimeCost {
-  using Clock = std::chrono::steady_clock;
+  using Clock = SteadyClock;
   //
-  TimeCost(const char *label = "ROOT");
+  TimeCost(std::string_view label = "ROOT", bool auto_show = true);
   ~TimeCost();
   void Show(const char *prefix = nullptr) const;
   void Reset();
   Clock::duration Duration();
 
 private:
-  const char *label_;
+  std::string_view label_;
   Clock::time_point start_;
+  const bool auto_show_;
 };
 
 namespace variant_op {
@@ -218,3 +308,174 @@ protected:
   noncopyable(const noncopyable &) = delete;
   noncopyable &operator=(const noncopyable &) = delete;
 };
+
+struct AsyncThreadRunner {
+  enum class Status {
+    Idle,
+    Running,
+    Stop,
+  };
+
+  bool IsStop() const { return status() == Status::Stop; }
+  Status status() const { return status_; }
+
+protected:
+  template <typename F>
+  bool AsyncRunImpl(F &&f, std::string_view thread_name = {}) {
+    return mutex_.RunWithMutexLock([this, f, thread_name] {
+      if (auto ori_status = status_.exchange(Status::Running);
+          ori_status == Status::Running)
+        return false;
+      ASSERT(!context_);
+      context_.emplace(std::move(f));
+      if (!thread_name.empty())
+        setThreadName(context_->get_id(), thread_name);
+      return true;
+    });
+  }
+
+  template <typename F1, typename F2> bool StopAndWaitImpl(F1 &&f1, F2 &&f2) {
+    return mutex_.RunWithMutexLock([&] {
+      if (auto ori_status = status_.exchange(Status::Stop);
+          ori_status == Status::Stop)
+        return false;
+      f1();
+      if (context_) {
+        context_->join();
+        context_.reset();
+      }
+      f2();
+      return true;
+    });
+  }
+
+protected:
+  std::optional<std::thread> context_;
+  std::atomic<Status> status_{};
+  MutexLockWrap mutex_;
+};
+
+template <typename F> NO_INLINE static auto NO_INLINE_FUNC(F &&f) {
+  return f();
+}
+
+void ToUpper(std::string &s);
+std::string ToUpper(std::string_view s);
+
+inline void STDCout(std::string_view s) {
+  static MutexLockWrap lock;
+  lock.RunWithMutexLock([&] { std::cout << s << std::endl; });
+}
+
+template <typename T, typename Allocator = std::allocator<T>>
+struct ConstSizeArray {
+
+  T &operator[](size_t index) { return data_[index]; }
+
+  const T &operator[](size_t index) const { return data_[index]; }
+
+  void Allocate(size_t n, Allocator &&allocator = Allocator{}) {
+    Allocate(n, allocator);
+  }
+
+  void Allocate(size_t n, Allocator &allocator) {
+    data_ = allocator.allocate(n);
+  }
+
+  template <typename... Args> T &New(size_t index, Args &&...__args) {
+    ASSERT(data_);
+    new (data_ + index) T(std::forward<Args>(__args)...);
+    return data_[index];
+  }
+
+  void Del(size_t index) {
+    ASSERT(data_);
+    data_[index].~T();
+  }
+
+  void Deallocate(size_t n, Allocator &&allocator = Allocator{}) {
+    return Deallocate(n, allocator);
+  }
+
+  void Deallocate(size_t n, Allocator &allocator) {
+    if (!data_)
+      return;
+    allocator.deallocate(data_, n);
+    data_ = nullptr;
+  }
+
+  bool operator()() { return data_; }
+  bool operator!() { return !data_; }
+
+private:
+  T *data_{};
+};
+
+template <typename T> struct FastBin : noncopyable {
+  static constexpr size_t MAX_PAGE_SIZE = 64 * 1024;
+  static constexpr size_t ADDR_SIZE = sizeof(void *);
+  static constexpr size_t ADDR_ALIGN = alignof(void *);
+
+  static constexpr size_t obj_size_ =
+      (sizeof(T) + ADDR_ALIGN - 1) / ADDR_ALIGN * ADDR_ALIGN;
+  static constexpr size_t obj_align_ =
+      (alignof(T) + ADDR_ALIGN - 1) / ADDR_ALIGN * ADDR_ALIGN;
+
+  FastBin() {
+    const size_t require = obj_size_ * 32 + ADDR_SIZE + obj_align_;
+    for (page_size_ = 32; page_size_ < require;) {
+      page_size_ *= 2;
+    }
+  }
+
+  ~FastBin() {
+    while (pages_) {
+      void *page = pages_;
+      void *next = calc_next(page);
+      pages_ = next;
+      free(page);
+    }
+  }
+
+  void *Alloc() {
+    void *obj = next_;
+    if (obj) {
+      next_ = calc_next(obj);
+      return obj;
+    }
+    if (start_ + obj_size_ > endup_) {
+      char *page = (char *)(malloc(page_size_));
+      calc_next(page) = pages_;
+      pages_ = page;
+
+      size_t lineptr = ((size_t)(page) + ADDR_SIZE + obj_align_ - 1) /
+                       obj_align_ * obj_align_;
+      start_ = (char *)(lineptr);
+      endup_ = page + page_size_;
+      if (page_size_ < MAX_PAGE_SIZE) {
+        page_size_ *= 2;
+      }
+    }
+    obj = start_;
+    start_ += obj_size_;
+
+    return obj;
+  }
+
+  void Dealloc(void *ptr) {
+    calc_next(ptr) = next_;
+    next_ = ptr;
+  }
+
+protected:
+  static void *&calc_next(void *ptr) { return (((void **)(ptr))[0]); }
+
+protected:
+  size_t page_size_;
+  char *start_{};
+  char *endup_{};
+  void *next_{};
+  void *pages_{};
+};
+
+} // namespace utils

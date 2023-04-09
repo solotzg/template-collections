@@ -2,7 +2,18 @@
 
 #include "head_define.h"
 #include <fmt/chrono.h>
+#include <fmt/compile.h>
 #include <fmt/format.h>
+
+namespace utils {
+
+using SteadyClock = std::chrono::steady_clock;
+using SystemClock = std::chrono::system_clock;
+
+using Nanoseconds = std::chrono::nanoseconds;
+using Microseconds = std::chrono::microseconds;
+using Milliseconds = std::chrono::milliseconds;
+using Seconds = std::chrono::seconds;
 
 template <typename T, typename UP> struct OperatorWithModulo {
   static inline T mul_mod(T a, T b, T mod) {
@@ -110,8 +121,12 @@ template <size_t N> struct Factorial {
   int A[N], RA[N];
 };
 
-template <typename T> struct is_str { static constexpr bool value = false; };
-template <> struct is_str<std::string> { static constexpr bool value = true; };
+template <typename T> struct is_str {
+  static constexpr bool value = false;
+};
+template <> struct is_str<std::string> {
+  static constexpr bool value = true;
+};
 template <> struct is_str<std::string_view> {
   static constexpr bool value = true;
 };
@@ -175,3 +190,50 @@ void PrintlnMessage(std::ostream &ostr, std::string_view split, T &&arg1,
                std::forward<Args>(rest_args)...);
   MSG_ENDL(ostr);
 }
+
+struct GlobalThreadIDHolder {
+  static GlobalThreadIDHolder &instance() {
+    static GlobalThreadIDHolder holder;
+    return holder;
+  }
+
+  uint64_t ThreadID() {
+    thread_local uint64_t tid = ++g_tid;
+    return tid;
+  }
+
+private:
+  std::atomic_uint64_t g_tid{};
+};
+
+static auto &global_thread_id_holder = GlobalThreadIDHolder::instance();
+
+inline uint64_t get_tid() { return global_thread_id_holder.ThreadID(); }
+
+static constexpr size_t LogTimePointSize = 25;
+
+inline std::string log_str_add_time(const std::string_view file, int line,
+                                    const std::string_view str) {
+  auto &&now = std::chrono::system_clock::now();
+  auto &&millisec =
+      duration_cast<Milliseconds>(now.time_since_epoch()).count() % 1000;
+  return fmt::format(FMT_COMPILE(FMT_LOG_MSG), now, millisec, file, line, str,
+                     get_tid());
+}
+
+inline std::string log_str(const std::string_view file, int line,
+                           const std::string_view str) {
+  return fmt::format(FMT_COMPILE(FMT_LOG_MSG_DETAIL), file, line, str,
+                     get_tid());
+}
+
+inline constexpr std::string_view extract_file_name(std::string_view s) {
+  for (auto p = s.rbegin(); p != s.rend(); ++p) {
+    if (*p == '/') {
+      return s.substr(s.size() - (p - s.rbegin()));
+    }
+  }
+  return s;
+}
+
+} // namespace utils

@@ -2,14 +2,7 @@
 
 #include "utils.h"
 
-#include <cassert>
-#include <chrono>
-#include <cstdint>
-#include <optional>
-#include <sstream>
-#include <string_view>
-#include <thread>
-#include <utility>
+namespace utils {
 
 template <typename T, typename Allocator = std::allocator<T>> struct SPSCQueue {
   using Element = T;
@@ -49,7 +42,7 @@ template <typename T, typename Allocator = std::allocator<T>> struct SPSCQueue {
     assert(cap < std::numeric_limits<uint32_t>::max());
     if (cap < 2)
       return 2;
-    return NextPow2(cap);
+    return utils::NextPow2(cap);
   }
 
   explicit SPSCQueue(uint32_t cap, const Allocator &allocator = Allocator())
@@ -60,14 +53,14 @@ template <typename T, typename Allocator = std::allocator<T>> struct SPSCQueue {
 
   struct Buff {
     explicit Buff(size_t n, Allocator &allocator) {
-      inner_ = std::allocator_traits<Allocator>::allocate(allocator, n);
+      inner_.Allocate(n, allocator);
     }
     const T &operator[](size_t idx) const { return inner_[idx]; }
-    void Set(size_t idx, T &&v) { new (inner_ + idx) T(std::forward<T>(v)); }
+    void Set(size_t idx, T &&v) { inner_.New(idx, std::forward<T>(v)); }
     template <typename F> void PopImpl(size_t idx, F &&f) {
       static_assert(std::is_destructible_v<T>);
       f(inner_[idx]);
-      inner_[idx].~T();
+      inner_.Del(idx);
     }
     void Pop(size_t idx, T &v) {
       PopImpl(idx, [&](T &e) { v = std::move(e); });
@@ -76,14 +69,11 @@ template <typename T, typename Allocator = std::allocator<T>> struct SPSCQueue {
       PopImpl(idx, [&](T &) {});
     }
     void Clear(size_t n, Allocator &allocator) {
-      if (!inner_)
-        return;
-      std::allocator_traits<Allocator>::deallocate(allocator, inner_, n);
-      inner_ = nullptr;
+      inner_.Deallocate(n, allocator);
     }
 
   private:
-    T *inner_;
+    ConstSizeArray<T, Allocator> inner_;
   };
 
   ~SPSCQueue() {
@@ -189,21 +179,29 @@ private:
 template <typename SPSC> struct SPSCQueueWithNotifer {
   using Element = typename SPSC::Element;
 
-  bool Put(Element &&e, const std::chrono::milliseconds &timeout) {
-    auto time_point = std::chrono::steady_clock::now() + timeout;
-    return Put(std::forward<Element>(e), time_point);
+  template <typename CBFull>
+  bool Put(Element &&e, const Milliseconds &timeout, CBFull &&cb_when_full) {
+    if (auto res = TryPut(std::forward<Element>(e)); res) {
+      return res;
+    }
+    auto time_point = SteadyClock::now() + timeout;
+    return Put(std::forward<Element>(e), time_point, std::move(cb_when_full));
   }
-  bool Put(Element &&e,
-           const std::chrono::steady_clock::time_point &time_point) {
+
+  template <typename CBFull>
+  bool Put(Element &&e, const SteadyClock::time_point &time_point,
+           CBFull &&cb_when_full) {
     for (;;) {
       if (auto res = TryPut(std::forward<Element>(e)); res) {
         return res;
+      } else {
+        cb_when_full();
       }
       switch (producer_notifier_.BlockedWaitUtil(time_point)) {
-      case AsyncNotifier::Status::Timeout: {
+      case Notifier::Status::Timeout: {
         return false;
       }
-      case AsyncNotifier::Status::Normal: {
+      case Notifier::Status::Normal: {
         break;
       }
       }
@@ -213,21 +211,34 @@ template <typename SPSC> struct SPSCQueueWithNotifer {
     return spsc_queue_.GenProducer().Put(std::forward<Element>(e));
   }
 
-  std::optional<Element> Get(const std::chrono::milliseconds &timeout) {
-    auto time_point = std::chrono::steady_clock::now() + timeout;
-    return Get(time_point);
+  void WakeProducer() const { producer_notifier_.Wake(); }
+
+  template <typename NotifierType, typename CallBackWhenEmpty>
+  std::optional<Element> Get(const Milliseconds &timeout,
+                             NotifierType &&customer_notifier,
+                             CallBackWhenEmpty &&cb_empty) {
+    if (auto res = TryGet(); res) {
+      return res;
+    }
+    auto time_point = SteadyClock::now() + timeout;
+    return Get(time_point, std::move(customer_notifier), std::move(cb_empty));
   }
-  std::optional<Element>
-  Get(const std::chrono::steady_clock::time_point &time_point) {
+
+  template <typename NotifierType, typename CallBackWhenEmpty>
+  std::optional<Element> Get(const SteadyClock::time_point &time_point,
+                             NotifierType &&customer_notifier,
+                             CallBackWhenEmpty &&cb_empty) {
     for (;;) {
       if (auto res = TryGet(); res) {
         return res;
+      } else {
+        cb_empty();
       }
-      switch (customer_notifier_.BlockedWaitUtil(time_point)) {
-      case AsyncNotifier::Status::Timeout: {
-        return false;
+      switch (customer_notifier.BlockedWaitUtil(time_point)) {
+      case Notifier::Status::Timeout: {
+        return std::nullopt;
       }
-      case AsyncNotifier::Status::Normal: {
+      case Notifier::Status::Normal: {
         break;
       }
       }
@@ -236,17 +247,15 @@ template <typename SPSC> struct SPSCQueueWithNotifer {
 
   std::optional<Element> TryGet() { return spsc_queue_.GenCustomer().Get(); }
 
-  void WakeProducer() const { producer_notifier_.Wake(); }
-  void WakeCustomer() const { customer_notifier_.Wake(); }
-
   template <typename... Args>
   SPSCQueueWithNotifer(Args &&...args)
       : spsc_queue_(std::forward<Args>(args)...) {}
 
   SPSC spsc_queue_;
   Notifier producer_notifier_;
-  Notifier customer_notifier_;
 };
+
+} // namespace utils
 
 #ifndef NDEBUG
 namespace tests {
@@ -275,19 +284,19 @@ struct TestNode {
 
 static void _test_spsc_queue() {
   {
-    ASSERT_EQ(NextPow2(1), 1);
-    ASSERT_EQ(NextPow2(2), 2);
+    ASSERT_EQ(utils::NextPow2(1), 1);
+    ASSERT_EQ(utils::NextPow2(2), 2);
     for (uint32_t i = 3; i <= 4; ++i)
-      ASSERT_EQ(NextPow2(i), 4);
+      ASSERT_EQ(utils::NextPow2(i), 4);
     for (uint32_t i = 5; i <= 8; ++i)
-      ASSERT_EQ(NextPow2(i), 8);
+      ASSERT_EQ(utils::NextPow2(i), 8);
     for (uint32_t i = 9; i <= 16; ++i)
-      ASSERT_EQ(NextPow2(i), 16);
-    ASSERT_EQ(NextPow2(1u << 31), 1u << 31);
+      ASSERT_EQ(utils::NextPow2(i), 16);
+    ASSERT_EQ(utils::NextPow2(1u << 31), 1u << 31);
   }
-  static_assert(alignof(SPSCQueue<void *>) == 64);
+  static_assert(alignof(utils::SPSCQueue<void *>) == 64);
   {
-    SPSCQueue<uint8_t> s(1);
+    utils::SPSCQueue<uint8_t> s(1);
     auto producer = s.GenProducer();
     auto customer = s.GenCustomer();
 
@@ -295,7 +304,7 @@ static void _test_spsc_queue() {
     assert(customer.Get().value() == 88);
   }
   {
-    SPSCQueue<std::string> s(13);
+    utils::SPSCQueue<std::string> s(13);
     auto producer = s.GenProducer();
     auto customer = s.GenCustomer();
 
@@ -310,7 +319,7 @@ static void _test_spsc_queue() {
     }
   }
   {
-    SPSCQueue<std::string> s(3);
+    utils::SPSCQueue<std::string> s(3);
     auto producer = s.GenProducer();
     auto customer = s.GenCustomer();
 
@@ -338,7 +347,7 @@ static void _test_spsc_queue() {
     }
     ASSERT_EQ(TestNode::test_node_cnt(), 0);
     {
-      SPSCQueue<TestNode> s(3);
+      utils::SPSCQueue<TestNode> s(3);
       auto producer = s.GenProducer();
       auto customer = s.GenCustomer();
 
@@ -352,7 +361,7 @@ static void _test_spsc_queue() {
     ASSERT_EQ(TestNode::test_node_cnt(), 0);
 
     {
-      SPSCQueue<TestNode> s(3);
+      utils::SPSCQueue<TestNode> s(3);
       auto producer = s.GenProducer();
       auto customer = s.GenCustomer();
 
@@ -377,16 +386,20 @@ static void _test_spsc_queue() {
     }
 
     {
-      SPSCQueueWithNotifer<SPSCQueue<TestNode>> s{3};
+      utils::Notifier customer_notifier;
+
+      utils::SPSCQueueWithNotifer<utils::SPSCQueue<TestNode>> s{3};
 
       std::thread t1([&]() {
         for (int i = 0; i < 8192; ++i) {
-          ASSERT(s.Put(TestNode{i + 1}, std::chrono::seconds{8192}));
-          s.WakeCustomer();
+          ASSERT(s.Put(TestNode{i + 1}, utils::Seconds{8192},
+                       [&] { customer_notifier.Wake(); }));
+          customer_notifier.Wake();
         }
       });
       for (int i = 0; i < 8192; ++i) {
-        auto v = s.Get(std::chrono::seconds{8192});
+        auto v = s.Get(utils::Seconds{8192}, customer_notifier,
+                       [&] { s.WakeProducer(); });
         ASSERT(v);
         ASSERT_EQ(v->v, i + 1);
         s.WakeProducer();

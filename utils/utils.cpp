@@ -1,16 +1,23 @@
 #include "utils.h"
+#include "thread-name.hpp"
 
-TimeCost::TimeCost(const char *label) : label_(label), start_(Clock::now()) {}
+namespace utils {
+
+TimeCost::TimeCost(std::string_view label, bool auto_show)
+    : label_(label), start_(Clock::now()), auto_show_(auto_show) {}
 
 void TimeCost::Show(const char *prefix) const {
   auto end = Clock::now();
 
   FMSGLN("[{}]{}[time cost: {}]", label_,
          prefix ? fmt::format("[{}]", prefix) : "",
-         std::chrono::duration_cast<std::chrono::milliseconds>(end - start_));
+         std::chrono::duration_cast<Milliseconds>(end - start_));
 }
 
-TimeCost::~TimeCost() { Show("END"); }
+TimeCost::~TimeCost() {
+  if (auto_show_)
+    Show("END");
+}
 
 void TimeCost::Reset() { start_ = Clock::now(); }
 
@@ -24,3 +31,20 @@ void ShowBuildInfo(std::ostream &os) {
      << "Features:        " << BuildInfo::Features() << std::endl
      << "Profile:         " << BuildInfo::Profile() << std::endl;
 }
+
+std::string ToUpper(std::string_view s) {
+  std::string res(s);
+  ToUpper(res);
+  return res;
+}
+
+void ToUpper(std::string &s) {
+  for (auto &&c : s) {
+    if (c >= 'a' && c <= 'z') {
+      const int diff = 'A' - 'a';
+      c += diff;
+    }
+  }
+}
+
+} // namespace utils
