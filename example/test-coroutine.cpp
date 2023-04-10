@@ -1,7 +1,14 @@
 #include "utils/async-log.hpp"
 #include "utils/coroutine-header.h"
 
+#define LOG_ASYNC_MODE 0
+
+#if LOG_ASYNC_MODE
 static auto *logger = &utils::AsyncLogger::GlobalSTDOUT();
+#define LOG(...) ASYNC_LOG_INFO(logger, __VA_ARGS__)
+#else
+#define LOG(...) LOG_INFO(__VA_ARGS__)
+#endif
 
 namespace example {
 
@@ -14,75 +21,67 @@ struct TestCoRunner : utils::async::CoRunner<CoContext, TestPromise> {
   using Base = utils::async::CoRunner<CoContext, TestPromise>;
   using Base::Base;
 
-  ~TestCoRunner() { ASYNC_LOG_INFO(logger, __PRETTY_FUNCTION__); }
+  ~TestCoRunner() { LOG(__PRETTY_FUNCTION__); }
 
-  TestCoRunner(Handle handle) : Base(handle) {
-    ASYNC_LOG_INFO(logger, "2.1 create task");
-  }
+  TestCoRunner(Handle handle) : Base(handle) { LOG("2.1 create task"); }
 };
 
 struct TestPromise : utils::async::CoPromise<CoContext, void> {
-  TestPromise() { ASYNC_LOG_INFO(logger, "1. create promie object"); }
+  TestPromise() { LOG("1. create promie object"); }
   TestCoRunner get_return_object() {
-    ASYNC_LOG_INFO(logger,
-                   "2. create coroutine return object, and the coroutine is "
-                   "created now");
+    LOG("2. create coroutine return object, and the coroutine is "
+        "created now");
     return std_coro::coroutine_handle<TestPromise>::from_promise(*this);
   }
   std_coro::suspend_always initial_suspend() {
-    ASYNC_LOG_INFO(logger, "3. do you want to susupend the current coroutine?");
-    ASYNC_LOG_INFO(logger,
-                   "4. suspend because return std_coro::suspend_always");
+    LOG("3. do you want to susupend the current coroutine?");
+    LOG("4. suspend because return std_coro::suspend_always");
     return {};
   }
   std_coro::suspend_always final_suspend() noexcept {
-    ASYNC_LOG_INFO(logger,
-                   "13. coroutine body finished, do you want to susupend the "
-                   "current coroutine?");
-    ASYNC_LOG_INFO(logger,
-                   "14. suspend because return std_coro::suspend_always");
+    LOG("13. coroutine body finished, do you want to susupend the "
+        "current coroutine?");
+    LOG("14. suspend because return std_coro::suspend_always");
     return {};
   }
 
   void return_void() {
-    ASYNC_LOG_INFO(
-        logger, "12. coroutine don't return value, so return_void is called");
+    LOG("12. coroutine don't return value, so return_void is called");
   }
 
   void unhandled_exception() {}
 
-  ~TestPromise() { ASYNC_LOG_INFO(logger, __PRETTY_FUNCTION__); }
+  ~TestPromise() { LOG(__PRETTY_FUNCTION__); }
 };
 
 struct AsyncDelayTask {
   bool await_ready() {
-    ASYNC_LOG_INFO(logger, "6. do you want to suspend current coroutine?");
-    ASYNC_LOG_INFO(logger,
-                   "7. yes, suspend becase awaiter.await_ready() return false");
+    LOG("6. do you want to suspend current coroutine?");
+    LOG("7. yes, suspend becase awaiter.await_ready() return false");
     return false;
   }
   template <typename Handle> void await_suspend(Handle handle) {
-    ASYNC_LOG_INFO(logger, "8. execute awaiter.await_suspend()");
+    LOG("8. execute awaiter.await_suspend()");
 
     handle.promise().co_context()->timer().Schedule(
         [c = resume_context_](bool) mutable {
-          ASYNC_LOG_INFO(logger, "`AsyncDelayTask` run & finish");
+          LOG("`AsyncDelayTask` run & finish");
           c->Notify();
-          ASYNC_LOG_INFO(logger, "`AsyncDelayTask` notify");
+          LOG("`AsyncDelayTask` notify");
         },
         duration_);
     handle.promise().co_context()->Suspend(
         handle, [c = resume_context_](const utils::AsyncNotifierPtr &notifer) {
-          ASYNC_LOG_INFO(logger, "`AsyncDelayTask` try to poll once");
+          LOG("`AsyncDelayTask` try to poll once");
           auto res = c->Poll(notifer);
-          ASYNC_LOG_INFO(logger, "`AsyncDelayTask` poll result is {}", res);
+          LOG("`AsyncDelayTask` poll result is {}", res);
           return res;
         });
 
-    ASYNC_LOG_INFO(logger, "9. schedule a delay task for {}", duration_);
+    LOG("9. schedule a delay task for {}", duration_);
   }
 
-  void await_resume() { ASYNC_LOG_INFO(logger, "10. {}", __PRETTY_FUNCTION__); }
+  void await_resume() { LOG("10. {}", __PRETTY_FUNCTION__); }
 
   AsyncDelayTask(utils::Milliseconds duration,
                  const utils::async::ResumeAblePtr &resume_context =
@@ -125,19 +124,19 @@ Task2 Promise2::get_return_object() {
 }
 
 Task2 suspend_none() {
-  ASYNC_LOG_INFO(logger, "suspend_none");
+  LOG("suspend_none");
   co_return 0;
 }
 
 Task2 suspend_one() {
-  ASYNC_LOG_INFO(logger, "suspend_one \\");
+  LOG("suspend_one \\");
   {
     auto &&dur = utils::Milliseconds{5};
-    ASYNC_LOG_INFO(logger, "start to wait for {}", dur);
+    LOG("start to wait for {}", dur);
     co_await utils::async::AsyncSleepFor(dur);
-    ASYNC_LOG_INFO(logger, "wait done");
+    LOG("wait done");
   }
-  ASYNC_LOG_INFO(logger, "suspend_one /");
+  LOG("suspend_one /");
   co_return 1;
 }
 
@@ -156,7 +155,7 @@ Task2 suspend_five() {
 }
 
 Task2 run() {
-  ASYNC_LOG_INFO(logger, "run");
+  LOG("run");
   auto a = co_await suspend_five();
   auto b = co_await suspend_five();
   auto c = co_await suspend_five();
@@ -176,13 +175,13 @@ static void _test_coroutine() {
                     worker);
 
   auto t = []() -> example::TestCoRunner {
-    ASYNC_LOG_INFO(logger, "5. begin to execute coroutine body");
+    LOG("5. begin to execute coroutine body");
     utils::async::ResumeAblePtr waiter = utils::async::ResumeAble::New();
     co_await example::AsyncDelayTask{utils::Milliseconds{20}, waiter};
-    ASYNC_LOG_INFO(logger, "11. coroutine resumed, continue execcute coroutine "
-                           "body now");
+    LOG("11. coroutine resumed, continue execcute coroutine "
+        "body now");
   }();
-  ASYNC_LOG_INFO(logger, "4.1 init context");
+  LOG("4.1 init context");
   auto x = t.IntoWorker(context);
   utils::async::BlockOn(x);
 }
