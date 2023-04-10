@@ -236,9 +236,9 @@ template <typename Context, typename PromiseType> struct CoRunner {
 protected:
   const Handle &handle() const { return handle_; }
   void DestroyHandle() {
-    if (!handle())
+    if (!handle_)
       return;
-    handle().destroy();
+    handle_.destroy();
     handle_ = nullptr;
   }
 

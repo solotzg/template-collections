@@ -24,6 +24,7 @@ struct TestCoRunner : utils::async::CoRunner<CoContext, TestPromise> {
   ~TestCoRunner() { LOG(__PRETTY_FUNCTION__); }
 
   TestCoRunner(Handle handle) : Base(handle) { LOG("2.1 create task"); }
+  TestCoRunner(TestCoRunner &&) = default;
 };
 
 struct TestPromise : utils::async::CoPromise<CoContext, void> {
