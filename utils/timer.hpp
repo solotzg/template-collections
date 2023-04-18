@@ -72,10 +72,10 @@ struct Timer : AsyncThreadRunner {
       }
     }
 
-    template <typename... Args> void Add(Args &&...__args) {
+    template <typename... Args> void Add(Args &&...args) {
       auto index = get_tid() & size_mask();
       locks_[index].RunWithMutexLock(
-          [&] { queues_[index].emplace(std::forward<Args>(__args)...); });
+          [&] { queues_[index].emplace(std::forward<Args>(args)...); });
     }
 
     Queues(size_t n) : size_(NextPow2(n)), size_mask_(size_ - 1) {
@@ -352,12 +352,12 @@ struct WheelTimerBase {
   };
 
   struct Queues {
-    template <typename... Args> void Add(Args &&...__args) {
+    template <typename... Args> void Add(Args &&...args) {
       auto index = get_tid() & size_mask();
       locks_[index].RunWithMutexLock([&] {
         for (;;) {
           auto ok =
-              queues_[index].GenProducer().Put(std::forward<Args>(__args)...);
+              queues_[index].GenProducer().Put(std::forward<Args>(args)...);
           if (ok)
             break;
           std::this_thread::yield();

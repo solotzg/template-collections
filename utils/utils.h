@@ -385,9 +385,9 @@ struct ConstSizeArray {
     data_ = allocator.allocate(n);
   }
 
-  template <typename... Args> T &New(size_t index, Args &&...__args) {
+  template <typename... Args> T &New(size_t index, Args &&...args) {
     ASSERT(data_);
-    new (data_ + index) T(std::forward<Args>(__args)...);
+    new (data_ + index) T(std::forward<Args>(args)...);
     return data_[index];
   }
 
