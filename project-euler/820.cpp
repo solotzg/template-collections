@@ -17,6 +17,6 @@ int64_t S(int64_t n) {
 }
 
 int main() {
-  SHOW_TIME_COST;
+  SHOW_TIME_COST()
   MSGLN(S(1e7));
 }

@@ -1,10 +1,8 @@
 #pragma once
 
-#include "utils/head_define.h"
 #include "utils/head_template.h"
 #include "utils/spsc_queue.hpp"
 #include "wheel-timer.hpp"
-#include <exception>
 
 namespace utils {
 

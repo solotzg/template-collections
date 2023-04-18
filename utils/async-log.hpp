@@ -435,13 +435,12 @@ static void _test_async_log2() {
   std::stringstream ss;
   utils::UniqAsyncLog<> logger{2, 4096};
   {
-    using TaskPoolWorker = utils::TaskPoolWorker<>;
     ss.clear();
     ss.str("");
 
     auto waiter_task_pool = utils::Waiter::New();
 
-    auto task_pool = std::make_shared<TaskPoolWorker>();
+    auto task_pool = std::make_shared<utils::TaskPoolWorker>();
 
     auto log_flush =
         utils::AsyncLogFlushWorker<utils::UniqAsyncLog<>>::New(&logger, ss);

@@ -26,21 +26,29 @@ protected:
   AsyncNotifierPtr parent_notifier_{};
 };
 
-template <size_t producer_size = 4>
-struct TaskPoolWorker final
-    : MutexLockWrap,
-      AtomicNotifierWap,
-      SteadyTaskWithParentNotifer,
-      std::enable_shared_from_this<TaskPoolWorker<producer_size>> {
-  using ProducerLocks = std::array<MutexLockWrap, producer_size>;
+struct TaskPoolWorker final : MutexLockWrap,
+                              AtomicNotifierWap,
+                              SteadyTaskWithParentNotifer,
+                              std::enable_shared_from_this<TaskPoolWorker> {
   using NeedWakeProducer = bool;
   using IsStop = bool;
   using Task = std::function<NeedWakeProducer(IsStop)>;
   using MPSC = MPSCQueueWithNotifer<MPSCWorker<Task>>;
 
-  TaskPoolWorker(size_t producer_cap = 1024, size_t consume_batch_size = 256)
-      : task_pool_mpsc_queue_(producer_size, producer_cap),
-        consume_batch_size_(consume_batch_size) {}
+  TaskPoolWorker(size_t producer_cnt = 4, size_t producer_cap = 1024,
+                 size_t consume_batch_size = 256)
+      : task_pool_mpsc_queue_(producer_cnt, producer_cap),
+        consume_batch_size_(consume_batch_size) {
+    producer_lock_.Allocate(producer_cnt);
+    rp(i, producer_size()) producer_lock_.New(i);
+
+    ASSERT(producer_lock_);
+  }
+
+  ~TaskPoolWorker() {
+    rp(i, producer_size()) producer_lock_.Del(i);
+    producer_lock_.Deallocate(producer_size());
+  }
 
   struct Worker {
     bool Put(Task &&t, const Milliseconds &timeout) {
@@ -53,10 +61,13 @@ struct TaskPoolWorker final
   };
 
   Worker IntoWorker() { return Worker{this->shared_from_this()}; }
+  size_t producer_size() const {
+    return task_pool_mpsc_queue().producer_size();
+  }
 
 private:
   bool Put(Task &&t, const Milliseconds &timeout) {
-    size_t id = utils::get_tid() % producer_size;
+    size_t id = utils::get_tid() % producer_size();
     return producer_lock(id).RunWithMutexLock([&] {
       bool res = task_pool_mpsc_queue().Put(std::move(t), id, timeout,
                                             [&] { Wake(); });
@@ -67,7 +78,8 @@ private:
 
   MPSC &task_pool_mpsc_queue() { return task_pool_mpsc_queue_; }
   const MPSC &task_pool_mpsc_queue() const { return task_pool_mpsc_queue_; }
-  typename ProducerLocks::value_type &producer_lock(size_t index) const {
+  MutexLockWrap &producer_lock(size_t index) const {
+    ASSERT(producer_lock_);
     return producer_lock_[index];
   }
 
@@ -109,7 +121,7 @@ private:
   }
 
 private:
-  mutable ProducerLocks producer_lock_;
+  mutable utils::ConstSizeArray<MutexLockWrap> producer_lock_;
   MPSC task_pool_mpsc_queue_;
   const size_t consume_batch_size_;
 };

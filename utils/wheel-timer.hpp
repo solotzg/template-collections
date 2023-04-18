@@ -42,16 +42,16 @@ private:
 };
 using TaskPtr = std::shared_ptr<Task>;
 
-struct TimerNode {
+struct TimerNode : noncopyable {
 
-  TimerNode(TaskPtr t) : task(std::move(t)) {
-    inner_list_init(&head);
-    expires = 0;
+  TimerNode(TaskPtr t) : task_(std::move(t)) {
+    inner_list_init(&head_);
+    expires_ = 0;
   }
 
-  InnerListHead head{};
-  TaskPtr task{};
-  uint32_t expires{};
+  ListHead head_{};
+  TaskPtr task_{};
+  uint32_t expires_{};
 };
 
 struct Timer {
@@ -84,7 +84,7 @@ struct Timer {
   void Add(TaskPtr task, uint32_t expires) {
     auto *node = (TimerNode *)(fast_bin.Alloc());
     new (node) TimerNode(std::move(task));
-    node->expires = expires;
+    node->expires_ = expires;
     Add(node);
   }
 
@@ -95,7 +95,7 @@ struct Timer {
 
   void Run(uint32_t jiffies) {
     while ((int32_t)(jiffies - timer_jiffies) >= 0) {
-      InnerListHead queued;
+      ListHead queued;
       int root_index = timer_jiffies & ROOT_WHEEL_SIZE_MASK;
       inner_list_init(&queued);
       if (root_index == 0) {
@@ -118,9 +118,9 @@ struct Timer {
       inner_list_splice_init(&tv1[root_index], &queued);
       while (!inner_list_is_empty(&queued)) {
         TimerNode *node;
-        node = inner_list_entry(queued.next, TimerNode, head);
-        node->task->Run(false);
-        inner_list_del_init(&node->head);
+        node = inner_list_entry(queued.next, TimerNode, head_);
+        node->task_->Run(false);
+        inner_list_del_init(&node->head_);
         node->~TimerNode();
         fast_bin.Dealloc(node);
       }
@@ -131,9 +131,9 @@ protected:
   void Add(TimerNode *node) {
 #define UPPER_SIZE(N) (uint32_t(1) << ((ROOT_WHEEL_BITS) + (N) * (WHEEL_BITS)))
 
-    uint32_t expires = node->expires;
+    uint32_t expires = node->expires_;
     uint32_t idx = expires - timer_jiffies;
-    InnerListHead *vec = nullptr;
+    ListHead *vec = nullptr;
 
     if (idx < UPPER_SIZE(0)) {
       int i = expires & ROOT_WHEEL_SIZE_MASK;
@@ -153,29 +153,29 @@ protected:
       int i = calc_timer_index(expires, 3);
       vec = &tv5[i];
     }
-    inner_list_add_tail(&node->head, vec);
+    inner_list_add_tail(&node->head_, vec);
 
 #undef UPPER_SIZE
   }
 
-  void Cascade(InnerListHead *v, int index) {
-    InnerListHead queued;
+  void Cascade(ListHead *v, int index) {
+    ListHead queued;
     inner_list_init(&queued);
     inner_list_splice_init(v + index, &queued);
     while (!inner_list_is_empty(&queued)) {
       TimerNode *node;
-      node = inner_list_entry(queued.next, TimerNode, head);
-      inner_list_del_init(&node->head);
+      node = inner_list_entry(queued.next, TimerNode, head_);
+      inner_list_del_init(&node->head_);
       Add(node);
     }
   }
-  void Destroy(InnerListHead *v, size_t size) {
+  void Destroy(ListHead *v, size_t size) {
     for (size_t j = 0; j < size; j++) {
-      InnerListHead *root = v + j;
+      ListHead *root = v + j;
       while (!inner_list_is_empty(root)) {
-        TimerNode *node = inner_list_entry(root->next, TimerNode, head);
-        inner_list_del_init(&node->head);
-        node->task->Run(true);
+        TimerNode *node = inner_list_entry(root->next, TimerNode, head_);
+        inner_list_del_init(&node->head_);
+        node->task_->Run(true);
         node->~TimerNode();
         fast_bin.Dealloc(node);
       }
@@ -184,11 +184,11 @@ protected:
 
 private:
   uint32_t timer_jiffies;
-  std::array<InnerListHead, ROOT_WHEEL_SIZE> tv1;
-  std::array<InnerListHead, WHEEL_SIZE> tv2;
-  std::array<InnerListHead, WHEEL_SIZE> tv3;
-  std::array<InnerListHead, WHEEL_SIZE> tv4;
-  std::array<InnerListHead, WHEEL_SIZE> tv5;
+  std::array<ListHead, ROOT_WHEEL_SIZE> tv1;
+  std::array<ListHead, WHEEL_SIZE> tv2;
+  std::array<ListHead, WHEEL_SIZE> tv3;
+  std::array<ListHead, WHEEL_SIZE> tv4;
+  std::array<ListHead, WHEEL_SIZE> tv5;
   utils::FastBin<TimerNode> fast_bin;
 };
 

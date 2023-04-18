@@ -126,7 +126,7 @@ uint64_t func_s2(const uint64_t n) {
 }
 
 int main() {
-  SHOW_TIME_COST;
+  SHOW_TIME_COST()
 #define F func_s2
   uint64_t n = 1e16;
   MSGLN(F(n));

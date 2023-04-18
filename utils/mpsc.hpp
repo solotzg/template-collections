@@ -1,7 +1,7 @@
 #pragma once
 
 #include "spsc_queue.hpp"
-#include "utils/utils.h"
+#include "utils/list-def.h"
 
 namespace utils {
 
@@ -160,8 +160,7 @@ private:
   AllocatorSPSC spsc_allocator_;
   ConstSizeArray<SPSCQueueType, AllocatorSPSC> spsc_queues_;
   // writable
-  AlignedStruct<size_t, BasicConfig::CPU_CACHE_LINE_SIZE>
-      queue_round_robin_index_{};
+  CPUCacheLineAligned<size_t> queue_round_robin_index_{};
 };
 
 template <typename MPSC> struct MPSCQueueWithNotifer {
@@ -262,7 +261,7 @@ template <typename MPSC> struct MPSCQueueWithNotifer {
 
   void WakeProducer(size_t pos) const { producer_notifier(pos).Wake(); }
   void WakeAllProducers() const {
-    for (size_t i = 0; i < mpsc_queue_.producer_size(); ++i)
+    for (size_t i = 0; i < producer_size(); ++i)
       producer_notifier(i).Wake();
   }
 
@@ -272,8 +271,8 @@ template <typename MPSC> struct MPSCQueueWithNotifer {
   }
 
   ~MPSCQueueWithNotifer() {
-    rp(i, mpsc_queue_.producer_size()) producer_notifier_.Del(i);
-    producer_notifier_.Deallocate(mpsc_queue_.producer_size());
+    rp(i, producer_size()) producer_notifier_.Del(i);
+    producer_notifier_.Deallocate(producer_size());
   }
 
   typename MPSC::String Show() const { return mpsc_queue_.Show(); }
@@ -285,10 +284,12 @@ template <typename MPSC> struct MPSCQueueWithNotifer {
   template <typename... Args>
   MPSCQueueWithNotifer(Args &&...args)
       : mpsc_queue_(std::forward<Args>(args)...) {
-    producer_notifier_.Allocate(mpsc_queue_.producer_size());
-    for (size_t i = 0; i < mpsc_queue_.producer_size(); ++i)
+    producer_notifier_.Allocate(producer_size());
+    for (size_t i = 0; i < producer_size(); ++i)
       producer_notifier_.New(i);
   }
+
+  size_t producer_size() const { return mpsc_queue_.producer_size(); }
 
 private:
   Notifier &producer_notifier(size_t i) { return producer_notifier_[i]; }
@@ -296,6 +297,232 @@ private:
 private:
   MPSC mpsc_queue_;
   ConstSizeArray<Notifier> producer_notifier_;
+};
+
+template <typename T> struct FastAlloc : utils::SpinLockWrap {
+  using Self = FastAlloc<T>;
+  struct DataHolder : utils::noncopyable {
+
+    DataHolder(T *ptr, FastAlloc &allocator)
+        : ptr_(ptr), allocator_(allocator) {
+      __builtin_assume(ptr_);
+    }
+
+    ~DataHolder() {
+      if (ptr_)
+        allocator_.Dealloc(ptr_);
+    }
+
+    T *TakeData() { return std::exchange(ptr_, nullptr); }
+
+  private:
+    T *ptr_;
+    FastAlloc &allocator_;
+  };
+
+  DataHolder Alloc() {
+    return RunWithLock([&] { return AllocImpl(); });
+  }
+
+protected:
+  void Dealloc(T *ptr) {
+    RunWithLock([&] { fast_bin_.Dealloc(ptr); });
+  }
+
+  DataHolder AllocImpl() {
+    auto data_ptr = static_cast<T *>(fast_bin_.Alloc());
+    return DataHolder{data_ptr, *this};
+  }
+
+protected:
+  utils::FastBin<T> fast_bin_;
+};
+
+template <typename T> struct MPSCQueueFastBinAlloc {
+  struct Node;
+  using FastAlloc = FastAlloc<Node>;
+
+  struct Node : utils::noncopyable {
+    template <typename... Args>
+    Node(Args &&...args) : data_(std::forward<Args>(args)...) {
+      head_.next = head_.prev = nullptr;
+    }
+
+    utils::ListHead *&mut_next(utils::ListHead *tar) {
+      return head_.next = tar;
+    }
+
+    static Node *ContainerOf(utils::ListHead *ptr) {
+      return inner_containerof(ptr, Node, head_);
+    }
+
+    utils::ListHead *ptr() { return &head_; }
+
+    T &data() { return data_; }
+
+  private:
+    T data_;
+    utils::ListHead head_;
+  };
+
+  struct SPSC {
+
+    template <typename... Args>
+    void Push(std::atomic_size_t &size, FastAlloc &fast_alloc,
+              Args &&...args) noexcept {
+      auto ptr = fast_alloc.Alloc().TakeData();
+      Node *data = new (ptr) Node(std::forward<Args>(args)...);
+      utils::ListHead *ori_tail = tail();
+      data->mut_next(ori_tail);
+      for (; !tail().compare_exchange_strong(ori_tail, data->ptr());) {
+        std::this_thread::yield();
+        ori_tail = tail();
+        data->mut_next(ori_tail);
+      }
+      size += 1;
+    }
+
+    bool TryGenQueue() {
+      utils::ListHead *ori_tail = tail().load(std::memory_order_acquire);
+      if (!ori_tail)
+        return false;
+
+      ori_tail = tail().exchange(nullptr);
+
+      utils::ListHead head;
+      {
+        head.next = ori_tail;
+        utils::ListHead *cur = &head, *next = head.next;
+        for (; next;) {
+          utils::ListHead *tmp = next->next;
+          cur->prev = next;
+          next->next = cur;
+
+          cur = next;
+          next = tmp;
+        }
+        cur->prev = &head;
+        cur->prev->next = cur;
+      }
+      inner_list_splice_tail(&head, &queue_head());
+      return true;
+    }
+
+    template <typename F> bool Consume(FastAlloc &fast_alloc, F &&f) {
+      if (inner_list_is_empty(&queue_head())) {
+        TryGenQueue();
+      }
+      if (inner_list_is_empty(&queue_head()))
+        return false;
+      {
+        auto *first_node_head_ptr = queue_head().next;
+        inner_list_del(first_node_head_ptr);
+        DataHolder holder(Node::ContainerOf(first_node_head_ptr), fast_alloc);
+        f(holder.data());
+      }
+      return true;
+    }
+
+    SPSC() { inner_list_init(&queue_head()); }
+    utils::ListHead &queue_head() { return *queue_head_; }
+    std::atomic<utils::ListHead *> &tail() { return *tail_; }
+
+    utils::CPUCacheLineAligned<std::atomic<utils::ListHead *>> tail_{};
+    utils::CPUCacheLineAligned<utils::ListHead> queue_head_{};
+  };
+
+  template <typename... Args>
+  bool TryPush(size_t index, Args &&...args) noexcept {
+    if (IsFull())
+      return false;
+    (*spsc_queues_)[index].Push(*size_, fast_alloc(),
+                                std::forward<Args>(args)...);
+    return true;
+  }
+
+  template <typename F>
+  size_t
+  Consume(F &&f,
+          const size_t max_consume_cnt = std::numeric_limits<size_t>::max()) {
+    size_t consume_cnt{};
+
+    for (;;) {
+      bool any_consumed = false;
+      const auto ori_queue_index = queue_round_robin_index();
+
+      auto &&func_loop = [&](const size_t end) {
+        for (; queue_round_robin_index() < end && consume_cnt < max_consume_cnt;
+             ++queue_round_robin_index()) {
+          auto &spsc = spsc_queues()[queue_round_robin_index()];
+          if (spsc.Consume(fast_alloc(), std::forward<F>(f))) {
+            consume_cnt++;
+            any_consumed = true;
+          }
+        }
+      };
+
+      {
+        // round robin start ~ end
+        func_loop(producer_size_);
+      }
+      if (consume_cnt < max_consume_cnt) {
+        // 0 ~ round robin start
+        queue_round_robin_index() = 0;
+        func_loop(ori_queue_index);
+      }
+
+      if (!any_consumed) {
+        break;
+      }
+    }
+
+    size_->fetch_sub(consume_cnt, std::memory_order_release);
+    return consume_cnt;
+  }
+
+  MPSCQueueFastBinAlloc(size_t producer_size,
+                        size_t limit = std::numeric_limits<size_t>::max())
+      : producer_size_(producer_size), size_limit_(limit) {
+    spsc_queues_->Allocate(producer_size_);
+    rp(i, producer_size_) spsc_queues_->New(i);
+  }
+  ~MPSCQueueFastBinAlloc() {
+    rp(i, producer_size_) spsc_queues_->Del(i);
+    spsc_queues_->Deallocate(producer_size_);
+  }
+
+  struct DataHolder : utils::noncopyable {
+    DataHolder(Node *entry, FastAlloc &allocator)
+        : entry_(entry), allocator_(allocator) {}
+    ~DataHolder() {
+      entry_->~Node();
+      typename FastAlloc::DataHolder holder(entry_, allocator_);
+    }
+    T &data() { return entry_->data(); }
+
+  private:
+    Node *entry_;
+    FastAlloc &allocator_;
+  };
+
+  bool IsFull() const { return size() >= size_limit_; }
+  size_t size() const { return size_->load(std::memory_order_relaxed); }
+
+protected:
+  FastAlloc &fast_alloc() { return *fast_alloc_; }
+  size_t &queue_round_robin_index() { return *queue_round_robin_index_; }
+  const size_t &queue_round_robin_index() const {
+    return *queue_round_robin_index_;
+  }
+  ConstSizeArray<SPSC> &spsc_queues() { return *spsc_queues_; }
+
+protected:
+  const size_t producer_size_;
+  const size_t size_limit_;
+  CPUCacheLineAligned<std::atomic_size_t> size_{};
+  CPUCacheLineAligned<FastAlloc> fast_alloc_;
+  CPUCacheLineAligned<ConstSizeArray<SPSC>> spsc_queues_;
+  CPUCacheLineAligned<size_t> queue_round_robin_index_{};
 };
 
 } // namespace utils
@@ -411,6 +638,87 @@ static void _test_mpsc_queue() {
 static void _test_mpsc() {
   _test_mpsc_with_notifer();
   _test_mpsc_queue();
+}
+
+static void _test_spin_lock() {
+  utils::SpinLockWrap spin_lock;
+  ASSERT(!spin_lock.IsLocked());
+  spin_lock.RunWithTryLock([&](auto &&lock) {
+    ASSERT(spin_lock.IsLocked());
+    ASSERT(lock.locked());
+    ASSERT(!lock.TryLock());
+  });
+  spin_lock.RunWithLock([&]() {
+    ASSERT(spin_lock.IsLocked());
+    spin_lock.RunWithTryLock([&](auto &&lock) {
+      ASSERT(spin_lock.IsLocked());
+      ASSERT(!lock.locked());
+      ASSERT(!lock.TryLock());
+    });
+  });
+  ASSERT(!spin_lock.IsLocked());
+}
+
+static void _test_mpsc_fast_bin_alloc() {
+  constexpr size_t producer_size = 2;
+  utils::MPSCQueueFastBinAlloc<TestNode> mpsc(producer_size, 10);
+  {
+    rp(i, 10) RUNTIME_ASSERT(mpsc.TryPush(0, i));
+    RUNTIME_ASSERT(!mpsc.TryPush(0, 1e9));
+    RUNTIME_ASSERT(mpsc.IsFull());
+
+    size_t k = 0;
+    mpsc.Consume(
+        [&](TestNode &x) {
+          RUNTIME_ASSERT_EQ(k, x.v);
+          ++k;
+        },
+        5);
+    RUNTIME_ASSERT(!mpsc.IsFull());
+    RUNTIME_ASSERT(mpsc.size());
+    RUNTIME_ASSERT_EQ(TestNode::test_node_cnt(), 5);
+    mpsc.Consume(
+        [&](TestNode &x) {
+          RUNTIME_ASSERT_EQ(k, x.v);
+          ++k;
+        },
+        5);
+    RUNTIME_ASSERT(!mpsc.size());
+    RUNTIME_ASSERT(!mpsc.IsFull());
+    mpsc.Consume([](auto &&) { PANIC(__PRETTY_FUNCTION__); });
+    RUNTIME_ASSERT_EQ(TestNode::test_node_cnt(), 0);
+  }
+
+  {
+    std::list<std::thread> threads;
+    constexpr size_t test_loop = 1024;
+    utils::Waiter waiter;
+    rp(id, producer_size) {
+      threads.emplace_back([&, id] {
+        waiter.Wait();
+        for (int i = 0; i < test_loop; ++i) {
+          for (; !mpsc.TryPush(id, i);) {
+            std::this_thread::yield();
+          }
+        }
+      });
+    }
+    waiter.WakeAll();
+    size_t expect_res = threads.size() * (test_loop - 1) * test_loop / 2;
+    size_t res_sum = 0;
+    for (size_t total = 0;;) {
+      auto cnt = mpsc.Consume([&](auto &&e) { res_sum += e.v; }, 5);
+      total += cnt;
+      if (total == threads.size() * test_loop) {
+        break;
+      }
+    }
+    for (auto &&t : threads)
+      t.join();
+    mpsc.Consume([](auto &&) { PANIC(__PRETTY_FUNCTION__); });
+    ASSERT_EQ(expect_res, res_sum);
+    RUNTIME_ASSERT_EQ(TestNode::test_node_cnt(), 0);
+  }
 }
 
 } // namespace tests

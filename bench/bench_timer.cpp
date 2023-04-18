@@ -4,7 +4,7 @@
 
 namespace bench {
 
-void bench_async_time(const size_t cnt) {
+static void bench_async_time(const size_t cnt) {
   auto &async_time = utils::chrono::AsyncClock::GlobalInstance();
   std::atomic<utils::SteadyClock::time_point> res;
   utils::TimeCost time_cost{__FUNCTION__, false};
@@ -18,7 +18,8 @@ void bench_async_time(const size_t cnt) {
   time_cost.Show();
   FMSGLN("avg: {}, qps: {:.3f}", dur / total_cnt, total_cnt / sec);
 }
-void bench_stl_time(const size_t cnt) {
+
+static void bench_stl_time(const size_t cnt) {
   std::atomic<utils::SteadyClock::time_point> res;
   utils::TimeCost time_cost{__FUNCTION__, false};
   rp(i, cnt) {
@@ -68,7 +69,7 @@ void bench_timer_task(Timer &timer, const size_t cnt, const size_t parallel) {
     t.join();
 }
 
-void bench_timer(int argc, char **argv) {
+static void bench_timer(int argc, char **argv) {
   const size_t cnt = 1e8;
   const size_t timer_cnt = 4e6;
   const size_t timer_parallel = 6;

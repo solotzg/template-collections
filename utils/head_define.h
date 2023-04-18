@@ -75,6 +75,7 @@ typedef __int128 INT128;
 
 #define PANIC(...)                                                             \
   do {                                                                         \
+    COUT_MSGLN_NO_SPLIT("Panic at ", __FILE__, ":", __LINE__);                 \
     utils::PrintlnMessage(std::cerr, " ", ##__VA_ARGS__);                      \
     std::terminate();                                                          \
   } while (false)
@@ -175,8 +176,8 @@ typedef __int128 INT128;
 #define DEBUG_MSGLN(...) MSGLN(__VA_ARGS__)
 #endif
 
-#define SHOW_TIME_COST                                                         \
-  TimeCost CONCAT(time_cost, __LINE__) {}
+#define SHOW_TIME_COST(...)                                                    \
+  utils::TimeCost CONCAT(_time_cost_, __LINE__) { __VA_ARGS__ }
 
 #define FMT_APPEND(out, ...)                                                   \
   do {                                                                         \

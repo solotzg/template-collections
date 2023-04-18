@@ -78,7 +78,7 @@ void foo_optimized(size_t n) {
 }
 
 int main() {
-  SHOW_TIME_COST;
+  SHOW_TIME_COST()
 #define FOO foo_optimized
   FOO(3);
   FOO(103);

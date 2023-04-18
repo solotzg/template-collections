@@ -260,6 +260,6 @@ template <> void go<5>() {
 }
 
 int main() {
-  SHOW_TIME_COST;
+  SHOW_TIME_COST()
   go<16>();
 }

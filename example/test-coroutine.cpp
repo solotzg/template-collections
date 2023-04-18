@@ -1,5 +1,7 @@
 #include "utils/async-log.hpp"
 #include "utils/coroutine-header.h"
+#include <filesystem>
+#include <fstream>
 
 #define LOG_ASYNC_MODE 0
 
@@ -12,13 +14,12 @@ static auto *logger = &utils::AsyncLogger::GlobalSTDOUT();
 
 namespace example {
 
-using TaskPoolWorker = utils::TaskPoolWorker<>;
-using CoContext =
-    utils::async::CoContext<utils::DelegateWheelTimer, TaskPoolWorker::Worker>;
+using CoExecutor = utils::async::CoExecutor<utils::DelegateWheelTimer,
+                                            utils::TaskPoolWorker::Worker>;
 
 struct TestPromise;
-struct TestCoRunner : utils::async::CoRunner<CoContext, TestPromise> {
-  using Base = utils::async::CoRunner<CoContext, TestPromise>;
+struct TestCoRunner : utils::async::CoRunner<CoExecutor, TestPromise> {
+  using Base = utils::async::CoRunner<CoExecutor, TestPromise>;
   using Base::Base;
 
   ~TestCoRunner() { LOG(__PRETTY_FUNCTION__); }
@@ -27,31 +28,28 @@ struct TestCoRunner : utils::async::CoRunner<CoContext, TestPromise> {
   TestCoRunner(TestCoRunner &&) = default;
 };
 
-struct TestPromise : utils::async::CoPromise<CoContext, void> {
-  TestPromise() { LOG("1. create promie object"); }
-  TestCoRunner get_return_object() {
+struct TestPromise : utils::async::CoPromise<CoExecutor, void, false> {
+  using Base = utils::async::CoPromise<CoExecutor, void, false>;
+  TestPromise(CoExecutor &c) : Base(c) { LOG("1. create promie object"); }
+  auto get_return_object() {
     LOG("2. create coroutine return object, and the coroutine is "
         "created now");
     return std_coro::coroutine_handle<TestPromise>::from_promise(*this);
   }
-  std_coro::suspend_always initial_suspend() {
+  auto initial_suspend() {
     LOG("3. do you want to susupend the current coroutine?");
     LOG("4. suspend because return std_coro::suspend_always");
-    return {};
+    return Base::initial_suspend();
   }
-  std_coro::suspend_always final_suspend() noexcept {
+  auto final_suspend() noexcept {
     LOG("13. coroutine body finished, do you want to susupend the "
         "current coroutine?");
     LOG("14. suspend because return std_coro::suspend_always");
-    return {};
+    return Base::final_suspend();
   }
-
   void return_void() {
     LOG("12. coroutine don't return value, so return_void is called");
   }
-
-  void unhandled_exception() {}
-
   ~TestPromise() { LOG(__PRETTY_FUNCTION__); }
 };
 
@@ -64,14 +62,15 @@ struct AsyncDelayTask {
   template <typename Handle> void await_suspend(Handle handle) {
     LOG("8. execute awaiter.await_suspend()");
 
-    handle.promise().co_context()->timer().Schedule(
+    handle.promise().co_executor()->timer().Schedule(
         [c = resume_context_](bool) mutable {
-          LOG("`AsyncDelayTask` run & finish");
+          LOG("`AsyncDelayTask` finish");
           c->Notify();
           LOG("`AsyncDelayTask` notify");
         },
         duration_);
-    handle.promise().co_context()->Suspend(
+
+    handle.promise().co_executor()->Push(
         handle, [c = resume_context_](const utils::AsyncNotifierPtr &notifer) {
           LOG("`AsyncDelayTask` try to poll once");
           auto res = c->Poll(notifer);
@@ -94,25 +93,40 @@ protected:
   const utils::Milliseconds duration_;
 };
 
-struct Task2;
-struct Promise2;
-struct Promise2 : utils::async::CoPromise<CoContext, int> {
-  Task2 get_return_object();
-};
-struct Task2 : utils::async::CoRunner<CoContext, Promise2> {
-  using CoRunner::CoRunner;
+struct RootTaskPromise : utils::async::CoPromise<CoExecutor, void, false> {
+  using Base = utils::async::CoPromise<CoExecutor, void, false>;
+  using Base::Base;
 
-  Task2(CoRunner &&src) : CoRunner(std::move(src)) {}
+  auto get_return_object() {
+    return std_coro::coroutine_handle<RootTaskPromise>::from_promise(*this);
+  }
+};
+
+struct RootTask : utils::async::CoRunner<CoExecutor, RootTaskPromise> {
+  using Base = utils::async::CoRunner<CoExecutor, RootTaskPromise>;
+  using Base::Base;
+};
+
+struct AwaitTaskPromise : utils::async::CoPromise<CoExecutor, int> {
+  using Base = utils::async::CoPromise<CoExecutor, int>;
+  using Base::Base;
+
+  auto get_return_object() {
+    return std_coro::coroutine_handle<AwaitTaskPromise>::from_promise(*this);
+  }
+};
+
+struct AwaitTask : utils::async::CoRunner<CoExecutor, AwaitTaskPromise> {
+  using Base = utils::async::CoRunner<CoExecutor, AwaitTaskPromise>;
+  using Base::Base;
 
   template <typename NextHandle> void await_suspend(NextHandle next_handle) {
-    handle()
-        .promise()
-        .mut_co_context(next_handle.promise().co_context())
-        ->Suspend(handle(), {});
+    auto *co_executor =
+        handle().promise().mut_co_executor(next_handle.promise().co_executor());
+    co_executor->Push(handle());
+    handle().promise().mut_next_handle(next_handle);
   }
-
-  bool await_ready() { return handle().done(); }
-
+  constexpr bool await_ready() { return false; }
   int await_resume() {
     auto res = TakeValue();
     ASSERT(res);
@@ -120,19 +134,65 @@ struct Task2 : utils::async::CoRunner<CoContext, Promise2> {
   }
 };
 
-Task2 Promise2::get_return_object() {
-  return std_coro::coroutine_handle<Promise2>::from_promise(*this);
-}
+struct ReadFileTask {
+  template <typename NextHandle> void await_suspend(NextHandle next_handle) {
+    next_handle.promise().co_executor()->Push(
+        next_handle,
+        [c = resume_context_](const utils::AsyncNotifierPtr &notifer) {
+          return c->Poll(notifer);
+        });
+    next_handle.promise().co_executor()->task_pool().Put(
+        [file_path = std::string(file_path_), waker = resume_context_,
+         res = res_](bool stop) -> bool {
+          if (stop) {
+            waker->Notify();
+            return true;
+          }
+          {
+            std::ofstream file(file_path);
+            file << 123456789;
+          }
+          int data{};
+          {
+            std::ifstream file(file_path);
+            file >> data;
+          }
+          {
+            auto res = std::filesystem::remove(file_path);
+            ASSERT(res);
+          }
+          ASSERT_EQ(data, 123456789);
+          res->emplace(data);
+          waker->Notify();
+          return true;
+        },
+        utils::MaxDuration);
+  }
+  constexpr bool await_ready() { return false; }
+  auto await_resume() { return std::move(*res_); }
 
-Task2 suspend_none() {
+  ReadFileTask(std::string_view file_path,
+               const utils::async::ResumeAblePtr &resume_context =
+                   utils::async::ResumeAble::New())
+      : file_path_(file_path), resume_context_(resume_context) {
+    res_ = std::make_shared<std::optional<int>>();
+  }
+
+protected:
+  utils::async::ResumeAblePtr resume_context_;
+  std::string_view file_path_;
+  std::shared_ptr<std::optional<int>> res_;
+};
+
+AwaitTask suspend_none() {
   LOG("suspend_none");
   co_return 0;
 }
 
-Task2 suspend_one() {
+AwaitTask suspend_one() {
   LOG("suspend_one \\");
   {
-    auto &&dur = utils::Milliseconds{5};
+    const auto &&dur = utils::Milliseconds{5};
     LOG("start to wait for {}", dur);
     co_await utils::async::AsyncSleepFor(dur);
     LOG("wait done");
@@ -141,7 +201,7 @@ Task2 suspend_one() {
   co_return 1;
 }
 
-Task2 suspend_two() {
+AwaitTask suspend_two() {
   co_await suspend_none();
   auto a = co_await suspend_one();
   co_await suspend_none();
@@ -149,18 +209,19 @@ Task2 suspend_two() {
   co_return a + b;
 }
 
-Task2 suspend_five() {
+AwaitTask suspend_five() {
   auto a = co_await suspend_two();
   auto b = co_await suspend_two();
   co_return 1 + a + b;
 }
 
-Task2 run() {
+RootTask run(CoExecutor &) {
   LOG("run");
   auto a = co_await suspend_five();
   auto b = co_await suspend_five();
   auto c = co_await suspend_five();
-  co_return 5 + a + b + c;
+  auto d = co_await ReadFileTask("/tmp/__test_read_file");
+  ASSERT_EQ(a + b + c, 15);
 }
 
 } // namespace example
@@ -170,33 +231,31 @@ Task2 run() {
 namespace tests {
 
 static void _test_coroutine() {
-  utils::AsyncSteadyTaskRunner steady_task_runner;
-  auto worker = steady_task_runner.AddTask(std::make_shared<TaskPoolWorker>());
-  CoContext context(utils::DelegateWheelTimer::GlobalDelegateInstance(),
-                    worker);
+  utils::AsyncSteadyTaskRunner steady_task_runner(true);
+  auto worker =
+      steady_task_runner.AddTask(std::make_shared<utils::TaskPoolWorker>());
+  CoExecutor context(utils::DelegateWheelTimer::GlobalDelegateInstance(),
+                     worker);
 
-  auto t = []() -> example::TestCoRunner {
+  auto t = [](CoExecutor &) -> example::TestCoRunner {
     LOG("5. begin to execute coroutine body");
     utils::async::ResumeAblePtr waiter = utils::async::ResumeAble::New();
     co_await example::AsyncDelayTask{utils::Milliseconds{20}, waiter};
     LOG("11. coroutine resumed, continue execcute coroutine "
         "body now");
-  }();
+  }(context);
   LOG("4.1 init context");
-  auto x = t.IntoWorker(context);
-  utils::async::BlockOn(x);
+  utils::async::BlockOn(context);
 }
 
 static void _test_coroutine2() {
-  utils::AsyncSteadyTaskRunner steady_task_runner;
-  auto worker = steady_task_runner.AddTask(std::make_shared<TaskPoolWorker>());
-  CoContext context(utils::DelegateWheelTimer::GlobalDelegateInstance(),
-                    worker);
-  auto t = example::run().IntoWorker(context);
-  utils::async::BlockOn(t);
-  auto res = t.TakeValue();
-  ASSERT(res.has_value());
-  ASSERT_EQ(res.value(), 20);
+  utils::AsyncSteadyTaskRunner steady_task_runner(true);
+  auto worker =
+      steady_task_runner.AddTask(std::make_shared<utils::TaskPoolWorker>());
+  CoExecutor e(utils::DelegateWheelTimer::GlobalDelegateInstance(), worker);
+
+  auto t = example::run(e);
+  utils::async::BlockOn(e);
 }
 
 } // namespace tests

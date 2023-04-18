@@ -47,42 +47,21 @@ template <typename T, typename Allocator = std::allocator<T>> struct SPSCQueue {
 
   explicit SPSCQueue(uint32_t cap, const Allocator &allocator = Allocator())
       : allocator_(allocator), max_num_(CalcMaxNum(cap)),
-        buffer_mask_(max_num_ - 1), buff_(max_num_, allocator_) {}
+        buffer_mask_(max_num_ - 1) {
+    buff_.Allocate(max_num_, allocator_);
+  }
 
   SPSCQueue(const SPSCQueue &) = delete;
 
-  struct Buff {
-    explicit Buff(size_t n, Allocator &allocator) {
-      inner_.Allocate(n, allocator);
-    }
-    const T &operator[](size_t idx) const { return inner_[idx]; }
-    void Set(size_t idx, T &&v) { inner_.New(idx, std::forward<T>(v)); }
-    template <typename F> void PopImpl(size_t idx, F &&f) {
-      static_assert(std::is_destructible_v<T>);
-      f(inner_[idx]);
-      inner_.Del(idx);
-    }
-    void Pop(size_t idx, T &v) {
-      PopImpl(idx, [&](T &e) { v = std::move(e); });
-    }
-    void Pop(size_t idx) {
-      PopImpl(idx, [&](T &) {});
-    }
-    void Clear(size_t n, Allocator &allocator) {
-      inner_.Deallocate(n, allocator);
-    }
-
-  private:
-    ConstSizeArray<T, Allocator> inner_;
-  };
-
   ~SPSCQueue() {
-    while (!IsEmpty()) {
-      auto cur = head().load(std::memory_order_relaxed);
-      buff_.Pop(cur);
-      head().store((cur + 1) & buffer_mask_, std::memory_order_release);
+    for (;;) {
+      const auto index = head().load(std::memory_order_relaxed);
+      if (index == tail().load(std::memory_order_relaxed))
+        break;
+      GetAtImpl(index, [&](T &) constexpr {});
+      head().store((index + 1) & buffer_mask_, std::memory_order_release);
     }
-    buff_.Clear(max_num_, allocator_);
+    buff_.Deallocate(max_num_, allocator_);
   }
 
   void Format(fmt::memory_buffer &out) const {
@@ -101,58 +80,61 @@ template <typename T, typename Allocator = std::allocator<T>> struct SPSCQueue {
   size_t capacity() const { return max_num_ - 1; }
 
 protected:
-  bool IsEmpty() {
-    auto cur = head().load(std::memory_order_relaxed);
+  bool LoadValidHead(size_t &cur) {
+    cur = head().load(std::memory_order_relaxed);
     if (cur == tail_cache()) {
       tail_cache() = tail().load(std::memory_order_acquire);
       if (cur == tail_cache())
-        return true;
+        return false;
     }
-    return false;
-  }
-
-  std::optional<T> Get() {
-    if (IsEmpty())
-      return {};
-    std::optional<T> res{};
-    GetImpl([&](T &v) { res = std::move(v); });
-    return res;
-  }
-
-  bool Get(T &res) {
-    if (IsEmpty())
-      return false;
-    GetImpl([&](T &v) { res = std::move(v); });
     return true;
   }
 
-  bool IsFull() {
-    auto cur = tail().load(std::memory_order_relaxed);
+  bool LoadValidTail(size_t &cur) {
+    cur = tail().load(std::memory_order_relaxed);
     auto next = (cur + 1) & buffer_mask_;
     if (next == head_cache()) {
       head_cache() = head().load(std::memory_order_acquire);
       if (next == head_cache()) {
-        return true;
+        return false;
       }
     }
-    return false;
+    return true;
+  }
+
+  std::optional<T> Get() {
+    size_t pos{};
+    if (!LoadValidHead(pos))
+      return std::nullopt;
+    std::optional<T> res{};
+    GetAtImpl(pos, [&](T &v) { res.emplace(std::move(v)); });
+    head().store((pos + 1) & buffer_mask_, std::memory_order_release);
+    return res;
+  }
+
+  bool Get(T &res) {
+    size_t pos{};
+    if (!LoadValidHead(pos))
+      return false;
+    GetAtImpl(pos, [&](T &v) { res = std::move(v); });
+    head().store((pos + 1) & buffer_mask_, std::memory_order_release);
+    return true;
   }
 
   bool Put(T &&data) {
-    if (IsFull())
+    size_t pos{};
+    if (!LoadValidTail(pos))
       return false;
-    auto cur = tail().load(std::memory_order_relaxed);
-    auto next = (cur + 1) & buffer_mask_;
-    buff_.Set(cur, std::move(data));
-    tail().store(next, std::memory_order_release);
+    buff_.New(pos, std::move(data));
+    tail().store((pos + 1) & buffer_mask_, std::memory_order_release);
     return true;
   }
 
 private:
-  template <typename F> void GetImpl(F &&f) {
-    auto cur = head().load(std::memory_order_relaxed);
-    buff_.PopImpl(cur, std::move(f));
-    head().store((cur + 1) & buffer_mask_, std::memory_order_release);
+  template <typename F> void GetAtImpl(size_t index, F &&f) {
+    static_assert(std::is_destructible_v<T>);
+    f(buff_[index]);
+    buff_.Del(index);
   }
 
   std::atomic_size_t &head() { return *head_; }
@@ -168,7 +150,7 @@ private:
   Allocator allocator_;
   const size_t max_num_;
   const size_t buffer_mask_;
-  Buff buff_;
+  ConstSizeArray<T, Allocator> buff_;
   /// Aligned to CPU cache line size
   AlignedStruct<std::atomic_size_t, BasicConfig::CPU_CACHE_LINE_SIZE> head_{};
   AlignedStruct<std::atomic_size_t, BasicConfig::CPU_CACHE_LINE_SIZE> tail_{};

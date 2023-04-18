@@ -41,6 +41,10 @@ private:
   alignas(alignment) Base base_;
 };
 
+template <typename Base>
+using CPUCacheLineAligned =
+    AlignedStruct<Base, BasicConfig::CPU_CACHE_LINE_SIZE>;
+
 class MutexLockWrap {
 public:
   using Mutex = std::mutex;
@@ -76,7 +80,7 @@ protected:
   Mutex &mutex() const { return *mutex_; }
 
 private:
-  mutable AlignedStruct<Mutex, BasicConfig::CPU_CACHE_LINE_SIZE> mutex_;
+  mutable CPUCacheLineAligned<Mutex> mutex_;
 };
 
 class SharedMutexLockWrap {
@@ -95,7 +99,7 @@ protected:
   Mutex &mutex() const { return *mutex_; }
 
 private:
-  mutable AlignedStruct<Mutex, BasicConfig::CPU_CACHE_LINE_SIZE> mutex_;
+  mutable CPUCacheLineAligned<Mutex> mutex_;
 };
 
 class MutexCondVarWrap : public MutexLockWrap {
@@ -106,7 +110,7 @@ protected:
   CondVar &cv() const { return *cv_; }
 
 private:
-  mutable AlignedStruct<CondVar, BasicConfig::CPU_CACHE_LINE_SIZE> cv_;
+  mutable CPUCacheLineAligned<CondVar> cv_;
 };
 
 struct AsyncNotifier {
@@ -177,8 +181,7 @@ struct Notifier final : AsyncNotifier, MutexCondVarWrap {
 private:
   // multi notifiers single receiver model. use another flag to avoid waiting
   // endlessly.
-  mutable AlignedStruct<std::atomic_bool, BasicConfig::CPU_CACHE_LINE_SIZE>
-      is_awake_{false};
+  mutable CPUCacheLineAligned<std::atomic_bool> is_awake_{false};
 };
 
 static inline std::ostream &operator<<(std::ostream &ostr,
@@ -221,8 +224,7 @@ struct AtomicNotifier final : AsyncNotifier {
   static AtomicNotifierPtr New() { return std::make_shared<Self>(); }
 
 private:
-  mutable AlignedStruct<std::atomic_bool, BasicConfig::CPU_CACHE_LINE_SIZE>
-      is_awake_{false};
+  mutable CPUCacheLineAligned<std::atomic_bool> is_awake_{false};
 };
 
 struct NotifierWap {
@@ -369,6 +371,7 @@ inline void STDCout(std::string_view s) {
 
 template <typename T, typename Allocator = std::allocator<T>>
 struct ConstSizeArray {
+  using Element = T;
 
   T &operator[](size_t index) { return data_[index]; }
 
@@ -416,13 +419,13 @@ template <typename T> struct FastBin : noncopyable {
   static constexpr size_t ADDR_SIZE = sizeof(void *);
   static constexpr size_t ADDR_ALIGN = alignof(void *);
 
-  static constexpr size_t obj_size_ =
+  static constexpr size_t OBJ_SIZE =
       (sizeof(T) + ADDR_ALIGN - 1) / ADDR_ALIGN * ADDR_ALIGN;
-  static constexpr size_t obj_align_ =
+  static constexpr size_t OBJ_ALIGN =
       (alignof(T) + ADDR_ALIGN - 1) / ADDR_ALIGN * ADDR_ALIGN;
 
   FastBin() {
-    const size_t require = obj_size_ * 32 + ADDR_SIZE + obj_align_;
+    const size_t require = OBJ_SIZE * 32 + ADDR_SIZE + OBJ_ALIGN;
     for (page_size_ = 32; page_size_ < require;) {
       page_size_ *= 2;
     }
@@ -443,13 +446,13 @@ template <typename T> struct FastBin : noncopyable {
       next_ = calc_next(obj);
       return obj;
     }
-    if (start_ + obj_size_ > endup_) {
+    if (start_ + OBJ_SIZE > endup_) {
       char *page = (char *)(malloc(page_size_));
       calc_next(page) = pages_;
       pages_ = page;
 
-      size_t lineptr = ((size_t)(page) + ADDR_SIZE + obj_align_ - 1) /
-                       obj_align_ * obj_align_;
+      size_t lineptr =
+          ((size_t)(page) + ADDR_SIZE + OBJ_ALIGN - 1) / OBJ_ALIGN * OBJ_ALIGN;
       start_ = (char *)(lineptr);
       endup_ = page + page_size_;
       if (page_size_ < MAX_PAGE_SIZE) {
@@ -457,7 +460,7 @@ template <typename T> struct FastBin : noncopyable {
       }
     }
     obj = start_;
-    start_ += obj_size_;
+    start_ += OBJ_SIZE;
 
     return obj;
   }
@@ -476,6 +479,74 @@ protected:
   char *endup_{};
   void *next_{};
   void *pages_{};
+};
+
+struct SpinLockWrap {
+  template <bool = false> struct LockGuard {
+    LockGuard(const SpinLockWrap &spin_lock) : spin_lock_(spin_lock) {
+      spin_lock_.Lock();
+    }
+    ~LockGuard() { spin_lock_.UnLock(); }
+
+  private:
+    const SpinLockWrap &spin_lock_;
+  };
+
+  template <> struct LockGuard<true> {
+    LockGuard(const SpinLockWrap &spin_lock)
+        : spin_lock_(spin_lock), locked_(spin_lock_.TryLock()) {}
+    ~LockGuard() {
+      if (locked_)
+        spin_lock_.UnLock();
+    }
+    bool TryLock() const {
+      if (locked())
+        return false;
+      locked_ = spin_lock_.TryLock();
+      return locked_;
+    }
+    bool locked() const { return locked_; }
+
+  private:
+    const SpinLockWrap &spin_lock_;
+    mutable bool locked_;
+  };
+
+  bool IsLocked() const { return lock().load(std::memory_order::acquire); }
+
+  template <typename F> auto RunWithLock(F &&f) const {
+    auto lock = GenLockGuard();
+    return f();
+  }
+  template <typename F> auto RunWithTryLock(F &&f) const {
+    auto lock = GenTryLockGuard();
+    return f(lock);
+  }
+  LockGuard<true> GenTryLockGuard() const { return LockGuard<true>(*this); }
+  LockGuard<false> GenLockGuard() const { return LockGuard<false>(*this); }
+
+protected:
+  bool TryLock() const {
+    if (IsLocked())
+      return false;
+    return !lock().exchange(true, std::memory_order::acq_rel);
+  }
+
+  void Lock() const {
+    for (; lock().exchange(true, std::memory_order::acq_rel);) {
+      std::this_thread::yield();
+    }
+  }
+
+  void UnLock() const {
+    ASSERT(IsLocked());
+    lock().store(false, std::memory_order::release);
+  }
+
+  std::atomic_bool &lock() const { return *lock_; }
+
+protected:
+  mutable CPUCacheLineAligned<std::atomic_bool> lock_;
 };
 
 } // namespace utils

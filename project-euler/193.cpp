@@ -47,7 +47,7 @@ struct Test {
   }
 };
 int main() {
-  SHOW_TIME_COST;
+  SHOW_TIME_COST()
   Test t{};
 
   // MSGLN(t.run(12));

@@ -11,71 +11,41 @@ namespace async {
 
 using CoroutineHandle = std_coro::coroutine_handle<>;
 
-struct CoContextBase : utils::noncopyable {
-  using FnResumeAble = std::function<bool(const utils::AsyncNotifierPtr &)>;
-  struct Frame : utils::noncopyable {
-    Frame(CoroutineHandle &&handle, FnResumeAble &&fn_resume_able)
-        : handle_(std::move(handle)),
-          fn_resume_able_(std::move(fn_resume_able)) {}
-    CoroutineHandle handle() const { return handle_; }
-    bool resume_able(const utils::AsyncNotifierPtr &notifer) const {
-      return fn_resume_able_(notifer);
-    }
+struct CoExecutorBase : utils::noncopyable {
+  using PollResumeAble = std::function<bool(const utils::AsyncNotifierPtr &)>;
 
-  protected:
-    CoroutineHandle handle_{};
-    FnResumeAble fn_resume_able_{};
-  };
-
-  void Suspend(CoroutineHandle handle, FnResumeAble &&fn_resume_able) {
-    ASSERT(!frame_);
-    ASSERT(handle);
-
-    if (fn_resume_able)
-      frame_.emplace(std::move(handle), std::move(fn_resume_able));
-    else
-      handles_.emplace(std::move(handle));
+  void Push(CoroutineHandle handle, PollResumeAble &&resume_able = {}) {
+    next_handle_ = handle;
+    resume_able_ = std::move(resume_able);
   }
 
   bool Poll(const utils::AsyncNotifierPtr &notifer) {
     for (;;) {
-      if (frame_) {
-        auto cur_handle = frame_->handle();
-        ASSERT(cur_handle);
-        if (cur_handle.done()) {
-          frame_.reset();
+      if (resume_able_) {
+        if (!resume_able_(notifer)) {
+          return false;
         } else {
-          if (frame_->resume_able(notifer)) {
-            frame_.reset();
-            handles_.emplace(std::move(cur_handle));
-          } else {
-            return false;
-          }
+          resume_able_ = {};
         }
       }
-
-      if (!handles_.empty()) {
-        auto cur_handle = handles_.top();
-        ASSERT(cur_handle);
-        if (cur_handle.done()) {
-          handles_.pop();
-        } else {
-          cur_handle.resume();
-        }
-      } else {
+      auto handle = next_handle_;
+      next_handle_ = {};
+      if (!handle || handle.done()) {
         return true;
       }
+      handle.resume();
     }
+    return true;
   }
 
 protected:
-  std::stack<CoroutineHandle> handles_{};
-  std::optional<Frame> frame_{};
+  CoroutineHandle next_handle_{};
+  PollResumeAble resume_able_{};
 };
 
 template <typename Timer, typename AsyncTaskPool>
-struct CoContext : CoContextBase {
-  CoContext(Timer &timer, AsyncTaskPool &task_pool)
+struct CoExecutor : CoExecutorBase {
+  CoExecutor(Timer &timer, AsyncTaskPool &task_pool)
       : timer_(timer), task_pool_(task_pool) {}
   Timer &timer() { return timer_; }
   AsyncTaskPool &task_pool() { return task_pool_; }
@@ -130,52 +100,106 @@ using ResumeAblePtr = std::shared_ptr<ResumeAble>;
 
 struct AsyncSleepFor {
   template <typename Handle> void await_suspend(Handle handle) {
-    handle.promise().co_context()->timer().Schedule(
+    handle.promise().co_executor()->timer().Schedule(
         [c = resume_context_](bool) mutable { c->Notify(); }, duration_);
-    handle.promise().co_context()->Suspend(
+    handle.promise().co_executor()->Push(
         handle, [c = resume_context_](const utils::AsyncNotifierPtr &notifer) {
           return c->Poll(notifer);
         });
   }
 
   constexpr void await_resume() {}
-  bool await_ready() { return duration_ == Milliseconds{}; }
-  AsyncSleepFor(Milliseconds duration,
+  bool await_ready() { return duration_ == utils::Milliseconds{}; }
+  AsyncSleepFor(utils::Milliseconds duration,
                 const ResumeAblePtr &resume_context = ResumeAble::New())
       : duration_(duration), resume_context_(resume_context) {}
 
+protected:
   ResumeAblePtr resume_context_;
-  const Milliseconds duration_;
+  const utils::Milliseconds duration_;
 };
 
 template <typename Task> auto BlockOn(Task &task) {
   thread_local auto local_notifer = utils::AtomicNotifier::New();
   for (;;) {
-    if (auto res = task.Poll(local_notifer); res)
+    if (auto res = task.Poll(local_notifer); bool(res))
       return res;
     local_notifer->BlockedWait();
   }
 }
 
-struct None {};
-static constexpr None NoneOpt{};
-
-template <typename Context> struct PromiseBase {
-  const Context *co_context() const { return co_context_; }
-  Context *co_context() { return co_context_; }
-
-  Context *mut_co_context(Context *co_context) {
-    co_context_ = co_context;
-    return co_context_;
+struct SuspendToExecutor {
+  constexpr bool await_ready() const noexcept { return false; }
+  template <typename HandleType>
+  auto await_suspend(HandleType handle) const noexcept {
+    handle.promise().co_executor()->Push(handle);
   }
-
-protected:
-  Context *co_context_{};
+  constexpr void await_resume() const noexcept {}
 };
 
-template <typename Context, typename Value>
-struct PromiseOption : PromiseBase<Context> {
+struct SuspendToNext {
+  constexpr bool await_ready() const noexcept { return false; }
+  template <typename HandleType>
+  auto await_suspend(HandleType handle) const noexcept {
+    ASSERT(handle.promise().next_handle());
+    return handle.promise().next_handle();
+  }
+  constexpr void await_resume() const noexcept {}
+};
+
+template <typename Executor> struct PromiseExecutorWrap {
+  Executor *co_executor() {
+    ASSERT(co_executor_);
+    return co_executor_;
+  }
+  Executor *&mut_co_executor(Executor *e) {
+    co_executor_ = e;
+    return co_executor_;
+  }
+  PromiseExecutorWrap(Executor &executor) : co_executor_(&executor) {}
+  void unhandled_exception() { std::terminate(); }
+  void rethrow_if_unhandled_exception() noexcept {}
+
+protected:
+  PromiseExecutorWrap() = default;
+
+protected:
+  Executor *co_executor_{};
+};
+
+template <typename Executor, bool await_able = true>
+struct PromiseBase : PromiseExecutorWrap<Executor> {
+  using Base = PromiseExecutorWrap<Executor>;
+  using Base::Base;
+
+  PromiseBase() = default;
+  CoroutineHandle next_handle() { return next_handle_; }
+  CoroutineHandle &mut_next_handle(CoroutineHandle handle) {
+    next_handle_ = handle;
+    return next_handle_;
+  }
+  auto final_suspend() noexcept { return SuspendToNext{}; }
+  auto initial_suspend() noexcept { return std_coro::suspend_always{}; }
+
+protected:
+  CoroutineHandle next_handle_{};
+};
+
+template <typename Executor>
+struct PromiseBase<Executor, false> : PromiseExecutorWrap<Executor> {
+  using Base = PromiseExecutorWrap<Executor>;
+  using Base::Base;
+
+  PromiseBase(Executor &executor) : Base(executor) {}
+  auto initial_suspend() noexcept { return SuspendToExecutor{}; }
+  auto final_suspend() noexcept { return std_coro::suspend_always{}; }
+};
+
+template <typename Executor, typename Value, bool await_able>
+struct PromiseOption : PromiseBase<Executor, await_able> {
+  using Base = PromiseBase<Executor, await_able>;
   using ValueType = std::optional<Value>;
+  using Base::Base;
 
   ValueType TakeValue() { return std::move(value_); }
 
@@ -183,55 +207,34 @@ protected:
   ValueType value_{};
 };
 
-template <typename Context, typename Value>
-struct CoPromise : PromiseOption<Context, Value> {
-  auto initial_suspend() noexcept { return std_coro::suspend_always{}; }
-  auto final_suspend() noexcept { return std_coro::suspend_always{}; }
-  void unhandled_exception() { std::terminate(); }
-  void rethrow_if_unhandled_exception() noexcept {}
-  //
+template <typename Executor, typename Value, bool await_able = true>
+struct CoPromise : PromiseOption<Executor, Value, await_able> {
+  using Base = PromiseOption<Executor, Value, await_able>;
+  using Base::Base;
+
   template <typename T> auto return_value(T &&t) {
     this->value_.emplace(std::move(t));
   }
 };
 
-template <typename Context>
-struct CoPromise<Context, void> : PromiseBase<Context> {
-  using ValueType = bool;
+template <typename Executor, bool await_able>
+struct CoPromise<Executor, void, await_able>
+    : PromiseBase<Executor, await_able> {
+  using Base = PromiseBase<Executor, await_able>;
+  using Base::Base;
 
-  auto initial_suspend() noexcept { return std_coro::suspend_always{}; }
-  auto final_suspend() noexcept { return std_coro::suspend_always{}; }
-  void unhandled_exception() { std::terminate(); }
-  void rethrow_if_unhandled_exception() noexcept {}
-  constexpr ValueType TakeValue() const { return true; }
-
-  //
   void return_void() noexcept {}
 };
 
-template <typename Context, typename PromiseType> struct CoRunner {
+template <typename Executor, typename PromiseType> struct CoRunnerBase {
   using promise_type = PromiseType;
-  using Handle = std_coro::coroutine_handle<promise_type>;
+  using Handle = std_coro::coroutine_handle<PromiseType>;
 
-  struct Worker : CoRunner {
-    Worker(CoRunner &&src, Context &context) : CoRunner(std::move(src)) {
-      handle().promise().mut_co_context(&context)->Suspend(handle(), {});
-    }
-
-    bool Poll(const utils::AsyncNotifierPtr &notifer) {
-      return handle().promise().co_context()->Poll(notifer);
-    }
-  };
-
-  Worker IntoWorker(Context &context) {
-    return Worker(std::move(*this), context);
+  CoRunnerBase(Handle h) : handle_(h) {}
+  CoRunnerBase(CoRunnerBase &&src) : handle_(src.handle_) {
+    src.handle_ = nullptr;
   }
-
-  auto TakeValue() { return handle().promise().TakeValue(); }
-
-  CoRunner(Handle h) : handle_(h) {}
-  CoRunner(CoRunner &&src) : handle_(src.handle_) { src.handle_ = nullptr; }
-  ~CoRunner() { DestroyHandle(); }
+  ~CoRunnerBase() { DestroyHandle(); }
 
 protected:
   const Handle &handle() const { return handle_; }
@@ -246,6 +249,24 @@ private:
   Handle handle_{};
 };
 
+template <typename Context>
+concept HasTakeValueMethod =
+    requires {
+      std::declval<typename Context::Handle &>().promise().TakeValue();
+    };
+
+template <typename Executor, typename PromiseType>
+struct CoRunner : CoRunnerBase<Executor, PromiseType> {
+  using Base = CoRunnerBase<Executor, PromiseType>;
+  using Base::Base;
+
+  auto TakeValue()
+    requires HasTakeValueMethod<Base>
+  {
+    return Base::handle().promise().TakeValue();
+  }
+};
+
 } // namespace async
 
 } // namespace utils
@@ -254,41 +275,36 @@ private:
 
 namespace tests {
 
-using TaskPoolWorker = utils::TaskPoolWorker<>;
-using CoContext =
-    utils::async::CoContext<utils::DelegateWheelTimer, TaskPoolWorker::Worker>;
+using CoExecutor = utils::async::CoExecutor<utils::DelegateWheelTimer,
+                                            utils::TaskPoolWorker::Worker>;
 
-struct TestPromise;
-struct TestCoRunner : utils::async::CoRunner<CoContext, TestPromise> {
-  using Base = utils::async::CoRunner<CoContext, TestPromise>;
-  using Base::Base;
-};
-struct TestPromise : utils::async::CoPromise<CoContext, void> {
-  TestCoRunner get_return_object() {
+struct TestPromise : utils::async::CoPromise<CoExecutor, void, false> {
+  using Base = utils::async::CoPromise<CoExecutor, void, false>;
+  TestPromise(CoExecutor &co_executor) : Base(co_executor) {}
+  auto final_suspend() noexcept { return std_coro::suspend_always{}; }
+  auto get_return_object() {
     return std_coro::coroutine_handle<TestPromise>::from_promise(*this);
   }
 };
 
-static TestCoRunner SleepFor(const utils::Milliseconds duration) {
-  co_await utils::async::AsyncSleepFor(duration);
-}
+struct TestCoRunner : utils::async::CoRunner<CoExecutor, TestPromise> {
+  using Base = utils::async::CoRunner<CoExecutor, TestPromise>;
+  using Base::Base;
+};
 
 static void _test_async_sleep() {
   auto time_cost = utils::TimeCost{"", false};
-  auto dur = utils::Milliseconds{1};
-  auto &&steady_task_runner = utils::AsyncSteadyTaskRunner::GlobalInstance();
-  auto worker = steady_task_runner.AddTask(std::make_shared<TaskPoolWorker>());
-  CoContext context(utils::DelegateWheelTimer::GlobalDelegateInstance(),
-                    worker);
-  {
-    auto t = SleepFor(utils::Milliseconds{1}).IntoWorker(context);
-    utils::async::BlockOn(t);
-  }
+  utils::AsyncSteadyTaskRunner steady_task_runner(true);
+  auto worker =
+      steady_task_runner.AddTask(std::make_shared<utils::TaskPoolWorker>());
+  CoExecutor executor(utils::DelegateWheelTimer::GlobalDelegateInstance(),
+                      worker);
+
+  auto t = [](CoExecutor &) -> TestCoRunner {
+    co_await utils::async::AsyncSleepFor(utils::Milliseconds{1});
+  }(executor);
+  utils::async::BlockOn(executor);
   ASSERT_GT(time_cost.Duration().count(), 1);
-  {
-    auto t = SleepFor(utils::Milliseconds{0}).IntoWorker(context);
-    ASSERT(t.Poll(nullptr));
-  }
 }
 
 } // namespace tests

@@ -127,7 +127,7 @@ struct Runner {
   std::vector<int64_t> mul_cache;
 };
 int main() {
-  SHOW_TIME_COST;
+  SHOW_TIME_COST()
   Runner runner{};
   assert(runner.foo(9) == 36288);
   assert(runner.foo(10) == 36288);
