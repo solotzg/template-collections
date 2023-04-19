@@ -125,6 +125,7 @@ private:
       round_robin_index_{};
 };
 
+NO_INLINE
 static void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
                                   size_t producer_cap) {
   MPMCNormal<BenchNode> mpmc_worker(producer_size, producer_cap);
@@ -178,6 +179,7 @@ static void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
   RUNTIME_ASSERT(cnt == producer_size * test_loop);
 }
 
+NO_INLINE
 static void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
                                  size_t producer_cap) {
   utils::MPSCQueueWithNotifer<utils::MPSCWorker<BenchNode>> mpsc_worker(
@@ -236,6 +238,7 @@ static void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
   RUNTIME_ASSERT(cnt == producer_size * test_loop);
 }
 
+NO_INLINE
 static void bench_mpsc_awake(size_t producer_size, size_t test_loop,
                              size_t producer_cap) {
   utils::Notifier mpsc_notifier;
@@ -298,6 +301,7 @@ static void bench_mpsc_awake(size_t producer_size, size_t test_loop,
   RUNTIME_ASSERT(cnt == producer_size * test_loop);
 }
 
+NO_INLINE
 static void bench_mpsc_fastbin_alloc(size_t producer_size, size_t test_loop,
                                      size_t producer_cap) {
   utils::Notifier mpsc_notifier;
