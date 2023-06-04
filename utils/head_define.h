@@ -7,10 +7,12 @@
 
 #define _rep_impl(i, a, b, cmp, op, step)                                      \
   for (int64_t i = (a), CONCAT(__##i##_, __LINE__) = int64_t(b);               \
-       i cmp CONCAT(__##i##_, __LINE__); i op step)
+       i cmp CONCAT(__##i##_, __LINE__); i op(step))
 #define rep(i, a, b) _rep_impl(i, a, b, <, +=, 1)
 #define rp(i, b) rep(i, 0, b)
 #define repd(i, a, b) _rep_impl(i, a, b, <=, +=, 1)
+#define _range_step(i, a, b, s) _rep_impl(i, a, b, <, +=, s)
+#define _ranged_step(i, a, b, s) _rep_impl(i, a, b, <=, +=, s)
 #define rev_repd(i, a, b) _rep_impl(i, a, b, >=, -=, 1)
 #define rev_rep(i, a, b) _rep_impl(i, a, b, >, -=, 1)
 #define bit(num, index) (((num) >> (index)) & 1)

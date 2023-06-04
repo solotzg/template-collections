@@ -1,15 +1,6 @@
 #pragma once
 
-#include "utils/head_template.h"
-#include <algorithm>
-#include <cassert>
-#include <cmath>
-#include <cstdint>
-#include <cstring>
-#include <numeric>
-#include <sstream>
-#include <unordered_map>
-#include <vector>
+#include "utils/utils.h"
 
 template <typename T> struct Factor {
   T num_;
@@ -91,20 +82,26 @@ private:
   Data data_;
 };
 
-template <typename T = int32_t, size_t N = 1000005> struct PrimeForDivide {
+template <typename T = uint32_t> struct PrimeForDivide {
   using Factors = Factors<T>;
 
-  // N is not very big
-  T max_prime[N];
-  PrimeForDivide() { InitPrimes(); }
+  PrimeForDivide(size_t maxn) : maxn_(maxn) { InitPrimes(); }
 
-  template <typename F> void Decompose(T x, F &&cb) {
-    while (x > 1) {
-      T j = max_prime[x];
+  T GetOneFactor(T n) {
+    ASSERT_LE(n, maxn_);
+    auto p = one_factor_[n];
+    return p == 0 ? n : p;
+  }
+
+  template <typename F> void Decompose(T n, F &&cb) {
+    ASSERT_LE(n, maxn_);
+    while (n > 1) {
+      T f = GetOneFactor(n);
       uint32_t c = 0;
-      while (x % j == 0)
-        x /= j, ++c;
-      cb(j, c);
+      do {
+        n /= f, ++c;
+      } while (n % f == 0);
+      cb(f, c);
     }
   }
 
@@ -119,16 +116,31 @@ template <typename T = int32_t, size_t N = 1000005> struct PrimeForDivide {
     return res;
   }
 
+  bool IsPrime(T n) const {
+    ASSERT_LE(n, maxn_);
+    return one_factor_[n] == 0;
+  }
+
   void InitPrimes() {
-    std::memset(max_prime, 0, sizeof max_prime);
-    for (size_t i = 2; i < N; ++i) {
-      if (max_prime[i])
-        continue;
-      for (size_t j = i; j < N; j += i) {
-        max_prime[j] = i;
+    one_factor_.resize(maxn_ + 1, 0);
+    repd(i, 2, maxn_) {
+      if (IsPrime(i))
+        primes_.emplace_back(i);
+      for (const auto &e : primes_) {
+        auto p = e * i;
+        if (p > maxn_)
+          break;
+        ASSERT_EQ(one_factor_[p], 0);
+        one_factor_[p] = e;
+        if (i % e == 0)
+          break;
       }
     }
   }
+
+  size_t maxn_;
+  std::vector<T> one_factor_;
+  std::vector<T> primes_;
 };
 
 struct Prime {
@@ -236,7 +248,7 @@ static void _test_prime_factors() {
     auto factors = prime.Decompose(a);
     T sum = 1;
     for (const auto &[k, v] : factors) {
-      sum *= fast_pow(k, v);
+      sum *= utils::fast_pow(k, v);
       assert(Prime::IsPrime(k));
     }
     assert(sum == a);
@@ -252,7 +264,7 @@ static void _test_prime_factors() {
     prime.Decompose(a, [&](int64_t x, size_t cnt) { factors.add(x, cnt); });
     T sum = 1;
     for (const auto &[k, v] : factors.data()) {
-      sum *= fast_pow(k, v);
+      sum *= utils::fast_pow(k, v);
       assert(Prime::IsPrime(k));
     }
     assert(sum == a);
@@ -261,7 +273,7 @@ static void _test_prime_factors() {
     Prime::FactorMap factors = prime.Decompose(a);
     T sum = 1;
     for (const auto &[k, v] : factors.data()) {
-      sum *= fast_pow(k, v);
+      sum *= utils::fast_pow(k, v);
       assert(Prime::IsPrime(k));
     }
     assert(sum == a);
@@ -275,20 +287,28 @@ static void _test_prime_factors() {
     auto factors = prime.Decompose(a);
     T sum = 1;
     for (const auto &[k, v] : factors) {
-      sum *= fast_pow(k, v);
+      sum *= utils::fast_pow(k, v);
     }
     assert(sum == a);
   }
   {
     int x = 656744;
     Prime::FactorMap factors;
-    PrimeForDivide p;
+    PrimeForDivide p(x);
     p.Decompose(x, [&](int f, int c) { factors.add(f, c); });
     int sum = 1;
     for (const auto &[k, v] : factors.data()) {
-      sum *= fast_pow(k, v);
+      sum *= utils::fast_pow(k, v);
     }
     assert(sum == x);
+  }
+  {
+    PrimeForDivide p(2099);
+    p.Decompose(2099, [](int f, int c) {
+      ASSERT_EQ(f, 2099);
+      ASSERT_EQ(c, 1);
+    });
+    ASSERT(p.IsPrime(2099));
   }
 }
 } // namespace tests
