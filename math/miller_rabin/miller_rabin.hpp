@@ -1,19 +1,15 @@
 #pragma once
 
-#include "utils/head_template.h"
-
-#include <algorithm>
-#include <cmath>
-#include <cstdint>
-#include <cstdlib>
+#include "utils/utils.h"
 
 struct MillerRabin {
-  using Modulo = OperatorWithModulo<int64_t, INT128>;
+  using Modulo = utils::OperatorWithModulo<int64_t, INT128>;
 
 public:
-  void FindFacs(int64_t n) {
-    this->fnum_ = 0;
-    FindFacsImpl(n);
+  std::vector<int64_t> FindFacs(int64_t n) {
+    std::vector<int64_t> factors; // factorization no order
+    FindFacsImpl(n, factors);
+    return factors;
   }
   MillerRabin(int check_times = 20) : check_times_(check_times) {}
 
@@ -24,37 +20,35 @@ public:
       return 1;
     if (n < 2 || !(n & 1))
       return 0;
-    int64_t x = n - 1;
-    int64_t t = 0;
-    while ((x & 1) == 0) {
-      x >>= 1;
+    int64_t d = n - 1;
+    int t = 0;
+    while ((d & 1) == 0) {
+      d >>= 1;
       t++;
     }
     for (int i = 0; i < check_times_; i++) {
       int64_t a = random() % (n - 1) + 1;
-      if (IsComposite(a, n, x, t))
-        return 0;
+      if (!MillerRabinTest(a, n, d, t))
+        return false;
     }
-    return 1;
+    return true;
   }
 
-  size_t fnum() const { return fnum_; }
-  const int64_t *factors() const { return factors_; }
-
 private:
-  // miller_rabin, return `true` if composite
-  bool IsComposite(int64_t a, int64_t n, int64_t x, int64_t t) const {
-    int64_t ret = Modulo::pow_mod(a, x, n);
-    int64_t last = ret;
-    for (int i = 1; i <= t; i++) {
-      ret = Modulo::mul_mod(ret, ret, n);
-      if (ret == 1 && last != 1 && last != n - 1)
-        return 1;
-      last = ret;
+  // miller_rabin, return `false` if composite
+  bool MillerRabinTest(const int64_t a, const int64_t n, const int64_t d,
+                       const int t) const {
+    int64_t x = Modulo::pow_mod(a, d, n);
+    if (x == 1 || x == n - 1)
+      return true;
+    rp(_, t) {
+      x = x * x % n;
+      if (x == 1)
+        return false;
+      if (x == n - 1)
+        return true;
     }
-    if (ret != 1)
-      return 1;
-    return 0;
+    return false;
   }
 
   int64_t gcd(int64_t a, int64_t b) {
@@ -70,6 +64,7 @@ private:
     return a;
   }
 
+  // pollard_rho algorithm
   int64_t PollardsRho(int64_t x, int64_t c) {
     int64_t i = 1, k = 2;
     int64_t x0 = random() % x;
@@ -89,23 +84,20 @@ private:
     }
   }
 
-  void FindFacsImpl(int64_t n) {
+  void FindFacsImpl(int64_t n, std::vector<int64_t> &factors) {
     if (IsPrime(n)) {
-      factors_[fnum_++] = n;
+      factors.emplace_back(n);
       return;
     }
     int64_t p = n;
     while (p >= n)
       p = PollardsRho(p, random() % (n - 1) + 1);
-    FindFacsImpl(p);
-    FindFacsImpl(n / p);
+    FindFacsImpl(p, factors);
+    FindFacsImpl(n / p, factors);
   }
 
 private:
   const int check_times_;
-  // pollard_rho
-  int64_t factors_[100]; // factorization no order
-  int fnum_;             // num of prime factor
 };
 
 #ifndef NDEBUG
@@ -122,13 +114,21 @@ static void _test_miller_rabin() {
     return 1;
   };
 
-  int t = 50;
+  int t = 500;
   while (t--) {
     auto num = random() % int64_t(1e9) + 1;
     if (m.IsPrime(num)) {
-      assert(is_prime(num));
+      ASSERT(is_prime(num), num);
     } else {
-      assert(!is_prime(num));
+      ASSERT(!is_prime(num));
+      auto p = ({
+        int64_t p = 1;
+        for (auto &&x : m.FindFacs(num)) {
+          p *= x;
+        }
+        p;
+      });
+      ASSERT_EQ(num, p);
     }
   }
 }

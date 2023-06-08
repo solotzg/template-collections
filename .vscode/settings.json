@@ -5,5 +5,8 @@
         "-pretty",
         "--log=info"
     ],
-    "clangd.path": "${workspaceFolder}/.vscode/clangd"
+    "clangd.path": "${workspaceFolder}/.vscode/clangd",
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.autopep8"
+    }
 }
