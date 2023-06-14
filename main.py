@@ -1,3 +1,7 @@
+from inner_utils import *
+
+
+@wrap_run_time
 def main():
     pass
 

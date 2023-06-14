@@ -1,3 +1,6 @@
+from inner_utils import *
+
+
 def calc_bit(n):
     s = set()
     c = 0
@@ -56,6 +59,7 @@ def D(n):
     return sum([d(i) for i in range(1, n+1)])
 
 
+@wrap_run_time
 def main():
     assert d(12) == 12
     assert d(102) == 1122

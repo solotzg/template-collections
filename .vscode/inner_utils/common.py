@@ -10,7 +10,8 @@ def wrap_run_time(func):
     def wrap_func(*args, **kwargs):
         bg = time.time()
         r = func(*args, **kwargs)
-        logger.info('Time cost {:.3f}s'.format(time.time() - bg))
+        logger.info('`{}`: time cost {:.3f}s'.format(
+            func.__name__, time.time() - bg))
         return r
 
     return wrap_func
