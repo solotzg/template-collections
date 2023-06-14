@@ -5,18 +5,18 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "type": "lldb",
-            "request": "attach",
-            "name": "Attach",
-            "pid": "${command:pickMyProcess}" // use ${command:pickProcess} to pick other users' processes
-        },
-        {
             "name": "Debug",
             "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/cmake-build-debug/CPPTest",
             "args": [],
             "preLaunchTask": "build"
-        }
+        },
+        {
+            "type": "lldb",
+            "request": "attach",
+            "name": "Attach",
+            "pid": "${command:pickMyProcess}" // use ${command:pickProcess} to pick other users' processes
+        },
     ]
 }
