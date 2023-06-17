@@ -143,13 +143,17 @@ template <typename T = uint32_t> struct PrimeForDivide {
   std::vector<T> primes_;
 };
 
-struct Prime {
+struct PrimeHelper {
   using T = uint64_t;
   using Factors = Factors<T>;
   using FactorMap = FactorMap<T>;
 
-  static Prime GenPrimeWithMaxNum(T max_num) { return Prime(max_num, 0); }
-  static Prime GenPrimeWithMaxLen(T max_len) { return Prime(0, max_len); }
+  static PrimeHelper GenPrimeHelperWithMaxNum(T max_num) {
+    return PrimeHelper(max_num, 0);
+  }
+  static PrimeHelper GenPrimeHelperWithMaxLen(T max_len) {
+    return PrimeHelper(0, max_len);
+  }
 
   static bool IsPrime(T x) {
     assert(x > 1);
@@ -203,7 +207,7 @@ struct Prime {
   }
 
 private:
-  Prime(T max_num, size_t max_len) {
+  PrimeHelper(T max_num, size_t max_len) {
     if (max_len == 0) {
       max_len_ = std::max(static_cast<size_t>(std::sqrt(max_num)), size_t(1));
     } else {
@@ -242,14 +246,14 @@ namespace tests {
 static void _test_prime_factors() {
   typedef uint64_t T;
   T a = 20100224546;
-  auto prime = Prime::GenPrimeWithMaxNum(1e9);
-  assert(!Prime::IsPrime(a));
+  auto prime = PrimeHelper::GenPrimeHelperWithMaxNum(1e9);
+  assert(!PrimeHelper::IsPrime(a));
   {
     auto factors = prime.Decompose(a);
     T sum = 1;
     for (const auto &[k, v] : factors) {
       sum *= utils::fast_pow(k, v);
-      assert(Prime::IsPrime(k));
+      assert(PrimeHelper::IsPrime(k));
     }
     assert(sum == a);
   }
@@ -260,21 +264,21 @@ static void _test_prime_factors() {
     assert(cnt == 20);
   }
   {
-    Prime::FactorMap factors;
+    PrimeHelper::FactorMap factors;
     prime.Decompose(a, [&](int64_t x, size_t cnt) { factors.add(x, cnt); });
     T sum = 1;
     for (const auto &[k, v] : factors.data()) {
       sum *= utils::fast_pow(k, v);
-      assert(Prime::IsPrime(k));
+      assert(PrimeHelper::IsPrime(k));
     }
     assert(sum == a);
   }
   {
-    Prime::FactorMap factors = prime.Decompose(a);
+    PrimeHelper::FactorMap factors = prime.Decompose(a);
     T sum = 1;
     for (const auto &[k, v] : factors.data()) {
       sum *= utils::fast_pow(k, v);
-      assert(Prime::IsPrime(k));
+      assert(PrimeHelper::IsPrime(k));
     }
     assert(sum == a);
   }
@@ -293,7 +297,7 @@ static void _test_prime_factors() {
   }
   {
     int x = 656744;
-    Prime::FactorMap factors;
+    PrimeHelper::FactorMap factors;
     PrimeForDivide p(x);
     p.Decompose(x, [&](int f, int c) { factors.add(f, c); });
     int sum = 1;
