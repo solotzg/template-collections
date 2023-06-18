@@ -1,5 +1,5 @@
 from .logger import logger
-from .common import *
+from .common import wrap_run_time, run_cmd
 
 __all__ = [
     "logger",
