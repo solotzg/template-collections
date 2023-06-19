@@ -195,16 +195,14 @@ typedef __int128 INT128;
 
 #define TO_LOG_MSG_ADD_TIME(str)                                               \
   utils::log_str_add_time(                                                     \
-      utils::extract_file_name(std::string_view{__FILE__, sizeof(__FILE__)}),  \
-      __LINE__, (str))
+      utils::extract_file_name(std::string_view{__FILE__}), __LINE__, (str))
 
 #define TO_LOG_FMSG_ADD_TIME(fmt_str, ...)                                     \
   TO_LOG_MSG_ADD_TIME(fmt::format(FMT_COMPILE(fmt_str), __VA_ARGS__))
 
 #define TO_LOG_MSG(str)                                                        \
-  utils::log_str(                                                              \
-      utils::extract_file_name(std::string_view{__FILE__, sizeof(__FILE__)}),  \
-      __LINE__, (str))
+  utils::log_str(utils::extract_file_name(std::string_view{__FILE__}),         \
+                 __LINE__, (str))
 
 #define TO_LOG_FMSG(fmt_str, ...)                                              \
   TO_LOG_MSG(fmt::format(FMT_COMPILE(fmt_str), __VA_ARGS__))

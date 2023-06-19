@@ -39,6 +39,12 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pthread")
 add_subdirectory(contrib)
 add_subdirectory(utils)
 
+option(ENABLE_PYBIND_UTILS "build pybind utils" OFF)
+if(ENABLE_PYBIND_UTILS)
+  message(STATUS "Enable pybind utils")
+  add_subdirectory(pybind_utils)
+endif()
+
 add_executable(CPPTest main.cpp)
 add_target_pch("${PROJECT_SOURCE_DIR}/utils/pch.h" CPPTest)
 target_include_directories(CPPTest PUBLIC ${PROJECT_SOURCE_DIR})
