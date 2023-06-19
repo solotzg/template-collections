@@ -14,6 +14,8 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
   set(OS_DARWIN 1)
 endif()
 
+set(USE_SHARED_LIB OFF)
+
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O3")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -O3")
 
@@ -34,12 +36,22 @@ if(OS_LINUX)
   endif()
 endif()
 
+option(ENABLE_PYBIND_UTILS "build pybind utils" OFF)
+
+if(ENABLE_PYBIND_UTILS)
+  set(USE_SHARED_LIB ON)
+endif()
+
+if(USE_SHARED_LIB)
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fPIC")
+  set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fPIC")
+endif()
+
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pthread")
 
 add_subdirectory(contrib)
 add_subdirectory(utils)
 
-option(ENABLE_PYBIND_UTILS "build pybind utils" OFF)
 if(ENABLE_PYBIND_UTILS)
   message(STATUS "Enable pybind utils")
   add_subdirectory(pybind_utils)
