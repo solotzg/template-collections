@@ -143,6 +143,19 @@ template <typename T = uint32_t> struct PrimeForDivide {
   std::vector<T> primes_;
 };
 
+namespace {
+inline uint64_t icbrt(uint64_t n) {
+  uint64_t s = std::pow(n, 1.0 / 3);
+  while ((s + 1) * (s + 1) * (s + 1) <= n) {
+    s += 1;
+  }
+  while (s * s * s > n) {
+    s -= 1;
+  }
+  return s;
+}
+} // namespace
+
 struct PrimeHelper {
   using T = uint64_t;
   using Factors = Factors<T>;
@@ -169,6 +182,29 @@ struct PrimeHelper {
   void Decompose(T x, Factors &res) {
     res.clear();
     Decompose(x, [&](T x, size_t cnt) { res.emplace_back(x, cnt); });
+  }
+
+  void InitPiSmall() {
+    pi_small_.resize(max_len_, 0);
+    uint32_t prime_cnt = 0;
+    rep(i, 2, max_len_) {
+      if (is_prime_[i])
+        prime_cnt++;
+      pi_small_[i] = prime_cnt;
+    }
+  }
+
+  uint64_t Pi(T n) {
+    if (n < max_len_)
+      return pi_small_[n];
+    uint64_t r = icbrt(n);
+    uint64_t k = std::sqrt(n);
+    uint64_t pr = Pi(r);
+    uint64_t pk = Pi(k);
+    auto mu = pk - pr;
+    auto s = PiFunc(pr - 1, n) - 1 + pr - mu * (mu + 1) / 2 + mu * pk;
+    rep(i, pr, pk) { s -= Pi(n / primes_[i]); }
+    return s;
   }
 
   template <typename F> void Decompose(T x, F &&f) {
@@ -207,6 +243,21 @@ struct PrimeHelper {
   }
 
 private:
+  uint64_t PiFunc(int64_t i, T n) {
+    if (i < 0)
+      return n;
+    if (n == 0)
+      return 0;
+    if (primes_[i] > n)
+      return 1;
+    auto s = n;
+    while (i >= 0) {
+      s -= PiFunc(i - 1, n / primes_[i]);
+      i -= 1;
+    }
+    return s;
+  }
+
   PrimeHelper(T max_num, size_t max_len) {
     if (max_len == 0) {
       max_len_ = std::max(static_cast<size_t>(std::sqrt(max_num)), size_t(1));
@@ -239,6 +290,7 @@ private:
   size_t max_len_;
   std::vector<bool> is_prime_;
   std::vector<T> primes_;
+  std::vector<uint32_t> pi_small_;
 };
 
 #ifndef NDEBUG
@@ -314,6 +366,8 @@ static void _test_prime_factors() {
     });
     ASSERT(p.IsPrime(2099));
   }
+  prime.InitPiSmall();
+  { ASSERT_EQ(prime.Pi(1e9), 50847534); }
 }
 } // namespace tests
 #endif
