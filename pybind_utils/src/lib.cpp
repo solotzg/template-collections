@@ -10,4 +10,5 @@ PYBIND11_MODULE(pybind_utils, m) {
   m.def("prime_helper_pi", prime_helper_pi);
   m.def("prime_helper_is_prime", prime_helper_is_prime);
   m.def("destroy_prime_helper", destroy_prime_helper);
+  m.def("prime_helper_decompose", prime_helper_decompose);
 }

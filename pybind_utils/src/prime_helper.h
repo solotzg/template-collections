@@ -7,3 +7,5 @@ void prime_helper_init_pi_small(void *p);
 uint64_t prime_helper_pi(void *p, uint64_t n);
 bool prime_helper_is_prime(void *p, uint64_t n);
 void destroy_prime_helper(void *p);
+std::unordered_map<uint64_t, uint64_t> prime_helper_decompose(void *p,
+                                                              uint64_t num);

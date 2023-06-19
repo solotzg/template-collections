@@ -19,3 +19,10 @@ bool prime_helper_is_prime(void *p, uint64_t n) {
   return IntoPrimeHelper(p)->IsPrime(n);
 }
 void destroy_prime_helper(void *p) { delete IntoPrimeHelper(p); }
+std::unordered_map<uint64_t, uint64_t> prime_helper_decompose(void *p,
+                                                              uint64_t num) {
+  std::unordered_map<uint64_t, uint64_t> res;
+  IntoPrimeHelper(p)->Decompose(
+      num, [&](uint64_t f, size_t cnt) { res.emplace(f, cnt); });
+  return res;
+}
