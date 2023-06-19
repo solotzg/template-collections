@@ -24,8 +24,10 @@ if(NOT LINKER_NAME)
 endif()
 
 if(LINKER_NAME)
-  set(CMAKE_EXE_LINKER_FLAGS
-      "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=${LINKER_NAME}")
+  set(_LINKER_FLAGS "-fuse-ld=${LINKER_NAME}")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${_LINKER_FLAGS}")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${_LINKER_FLAGS}")
+  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} ${_LINKER_FLAGS}")
   message(STATUS "Using linker: ${LINKER_NAME}")
 else()
   message(STATUS "Using linker: <default>")
@@ -35,17 +37,22 @@ option(ENABLE_THINLTO "Clang-specific link time optimization" OFF)
 
 if(ENABLE_THINLTO)
   # Link time optimization
+  set(_THIN_LTO_FLAGS
+      "-flto=thin -fvisibility=hidden -fvisibility-inlines-hidden -fsplit-lto-unit"
+  )
+  set(_THIN_LTO_CXX_FLAGS "${_THIN_LTO_FLAGS} -fwhole-program-vtables")
+  set(_THIN_LTO_LINKER_FLAGS
+      "${_THIN_LTO_CXX_FLAGS} -flto-jobs=${THINLTO_JOBS}")
   set(THINLTO_JOBS
       "0"
       CACHE STRING "ThinLTO compilation parallelism")
-  set(CMAKE_C_FLAGS
-      "${CMAKE_C_FLAGS} -flto=thin -fvisibility=hidden -fvisibility-inlines-hidden -fsplit-lto-unit"
-  )
-  set(CMAKE_CXX_FLAGS
-      "${CMAKE_CXX_FLAGS} -flto=thin -fvisibility=hidden -fvisibility-inlines-hidden -fwhole-program-vtables -fsplit-lto-unit"
-  )
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_THIN_LTO_FLAGS}")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_THIN_LTO_CXX_FLAGS}")
   set(CMAKE_EXE_LINKER_FLAGS
-      "${CMAKE_EXE_LINKER_FLAGS} -flto=thin -flto-jobs=${THINLTO_JOBS} -fvisibility=hidden -fvisibility-inlines-hidden -fwhole-program-vtables -fsplit-lto-unit"
-  )
+      "${CMAKE_EXE_LINKER_FLAGS} ${_THIN_LTO_LINKER_FLAGS}")
+  set(CMAKE_SHARED_LINKER_FLAGS
+      "${CMAKE_SHARED_LINKER_FLAGS} ${_THIN_LTO_LINKER_FLAGS}")
+  set(CMAKE_MODULE_LINKER_FLAGS
+      "${CMAKE_MODULE_LINKER_FLAGS} ${_THIN_LTO_LINKER_FLAGS}")
   message(STATUS "Using `ThinLTO`, lto-jobs=${THINLTO_JOBS}")
 endif()
