@@ -167,8 +167,14 @@ struct PrimeHelper {
   static PrimeHelper GenPrimeHelperWithMaxLen(T max_len) {
     return PrimeHelper(0, max_len);
   }
+  static PrimeHelper *GenPrimeHelperPtrWithMaxNum(T max_num) {
+    return new PrimeHelper(max_num, 0);
+  }
+  static PrimeHelper *GenPrimeHelperPtrWithMaxLen(T max_len) {
+    return new PrimeHelper(0, max_len);
+  }
 
-  static bool IsPrime(T x) {
+  static bool IsPrimeBruceForce(T x) {
     assert(x > 1);
     for (T p = 2; p < x && p * p <= x; ++p) {
       if (x % p == 0)
@@ -230,7 +236,7 @@ struct PrimeHelper {
     return res;
   }
 
-  bool isPrime(T x) {
+  bool IsPrime(T x) {
     if (x < max_len_)
       return is_prime_[x];
     if ((x & 1) == 0)
@@ -299,13 +305,13 @@ static void _test_prime_factors() {
   typedef uint64_t T;
   T a = 20100224546;
   auto prime = PrimeHelper::GenPrimeHelperWithMaxNum(1e9);
-  assert(!PrimeHelper::IsPrime(a));
+  assert(!PrimeHelper::IsPrimeBruceForce(a));
   {
     auto factors = prime.Decompose(a);
     T sum = 1;
     for (const auto &[k, v] : factors) {
       sum *= utils::fast_pow(k, v);
-      assert(PrimeHelper::IsPrime(k));
+      assert(PrimeHelper::IsPrimeBruceForce(k));
     }
     assert(sum == a);
   }
@@ -321,7 +327,7 @@ static void _test_prime_factors() {
     T sum = 1;
     for (const auto &[k, v] : factors.data()) {
       sum *= utils::fast_pow(k, v);
-      assert(PrimeHelper::IsPrime(k));
+      assert(PrimeHelper::IsPrimeBruceForce(k));
     }
     assert(sum == a);
   }
@@ -330,7 +336,7 @@ static void _test_prime_factors() {
     T sum = 1;
     for (const auto &[k, v] : factors.data()) {
       sum *= utils::fast_pow(k, v);
-      assert(PrimeHelper::IsPrime(k));
+      assert(PrimeHelper::IsPrimeBruceForce(k));
     }
     assert(sum == a);
   }

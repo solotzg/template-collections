@@ -12,10 +12,10 @@ class Solve:
 
     def __init__(self, n) -> None:
         self.n = n
-        self.prime_helper = PrimeHelper(self.n)
 
     @wrap_run_time
     def run(self):
+        self.prime_helper = PrimeHelper(self.n)
         self.prime_helper.init_pi()
         res = self.n
         for p in range(1, 1+int(math.sqrt(self.n))):
@@ -25,7 +25,20 @@ class Solve:
         return res
 
     @wrap_run_time
+    def run_optimized(self):
+        prime_helper = pybind_utils.gen_prime_helper_with_maxnum(self.n)
+        pybind_utils.prime_helper_init_pi_small(prime_helper)
+        res = self.n
+        for p in range(1, 1+int(math.sqrt(self.n))):
+            a = pybind_utils.prime_helper_pi(prime_helper, p-1)
+            b = pybind_utils.prime_helper_pi(prime_helper, self.n // p)
+            res -= b-a
+        pybind_utils.destroy_prime_helper(prime_helper)
+        return res
+
+    @wrap_run_time
     def bruce_force(self):
+        self.prime_helper = PrimeHelper(self.n)
         res = self.n
         for p in range(2, self.n+1):
             if self.prime_helper.is_prime(p):
@@ -41,7 +54,7 @@ def test():
 
 def main():
     n = 10**10
-    print(Solve(n).run())
+    print(Solve(n).run_optimized())
 
 
 if __name__ == '__main__':
