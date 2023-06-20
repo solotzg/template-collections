@@ -161,17 +161,15 @@ struct PrimeHelper {
   using Factors = Factors<T>;
   using FactorMap = FactorMap<T>;
 
+  PrimeHelper(const PrimeHelper &) = delete;
+  PrimeHelper(PrimeHelper &&src) = default;
+
   static PrimeHelper GenPrimeHelperWithMaxNum(T max_num) {
-    return PrimeHelper(max_num, 0);
+    return PrimeHelper(
+        std::max(static_cast<size_t>(std::sqrt(max_num)), size_t(1)));
   }
   static PrimeHelper GenPrimeHelperWithMaxLen(T max_len) {
-    return PrimeHelper(0, max_len);
-  }
-  static PrimeHelper *GenPrimeHelperPtrWithMaxNum(T max_num) {
-    return new PrimeHelper(max_num, 0);
-  }
-  static PrimeHelper *GenPrimeHelperPtrWithMaxLen(T max_len) {
-    return new PrimeHelper(0, max_len);
+    return PrimeHelper(max_len);
   }
 
   static bool IsPrimeBruceForce(T x) {
@@ -236,6 +234,12 @@ struct PrimeHelper {
     return res;
   }
 
+  std::unordered_map<uint64_t, uint64_t> DecomposeSTL(T num) {
+    std::unordered_map<uint64_t, uint64_t> res;
+    Decompose(num, [&](uint64_t f, uint64_t cnt) { res.emplace(f, cnt); });
+    return res;
+  }
+
   bool IsPrime(T x) {
     if (x < max_len_)
       return is_prime_[x];
@@ -264,13 +268,8 @@ private:
     return s;
   }
 
-  PrimeHelper(T max_num, size_t max_len) {
-    if (max_len == 0) {
-      max_len_ = std::max(static_cast<size_t>(std::sqrt(max_num)), size_t(1));
-    } else {
-      max_len_ = max_len;
-    }
-    max_len_++;
+  PrimeHelper(size_t max_len) {
+    max_len_ = max_len + 1;
     is_prime_.resize(max_len_, 1);
     init();
   }

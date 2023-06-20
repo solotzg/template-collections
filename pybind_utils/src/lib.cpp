@@ -1,14 +1,18 @@
-#include "prime_helper.h"
+#include "math/Template/prime_factors.hpp"
 #include "pybind_utils/pch.h"
+
+namespace py = pybind11;
 
 PYBIND11_MODULE(pybind_utils, m) {
   m.doc() = "pybind11 plugin `pybind_utils`";
   m.def("get_tid", &utils::get_tid);
-  m.def("gen_prime_helper_with_maxlen", gen_prime_helper_with_maxlen);
-  m.def("gen_prime_helper_with_maxnum", gen_prime_helper_with_maxnum);
-  m.def("prime_helper_init_pi_small", prime_helper_init_pi_small);
-  m.def("prime_helper_pi", prime_helper_pi);
-  m.def("prime_helper_is_prime", prime_helper_is_prime);
-  m.def("destroy_prime_helper", destroy_prime_helper);
-  m.def("prime_helper_decompose", prime_helper_decompose);
+  py::class_<PrimeHelper>(m, "PrimeHelper")
+      .def(py::init(&PrimeHelper::GenPrimeHelperWithMaxLen))
+      .def_static("is_prime_bruceforce", &PrimeHelper::IsPrimeBruceForce)
+      .def("is_prime", &PrimeHelper::IsPrime)
+      .def("init_pi_small", &PrimeHelper::InitPiSmall)
+      .def("pi", &PrimeHelper::Pi)
+      .def("decompose", &PrimeHelper::DecomposeSTL)
+      .def("primes", &PrimeHelper::primes);
+  m.def("gen_prime_helper_with_maxnum", PrimeHelper::GenPrimeHelperWithMaxNum);
 }

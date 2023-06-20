@@ -3,18 +3,6 @@
 
 import random
 import math
-from functools import reduce
-import time
-
-
-def wrap_run_time(func):
-    def wrap_func(*args, **kwargs):
-        bg = time.time()
-        r = func(*args, **kwargs)
-        print('Time cost {:.3f}s'.format(time.time() - bg))
-        return r
-
-    return wrap_func
 
 
 class MillerRabin:
@@ -65,37 +53,18 @@ class MillerRabin:
                 k = k << 1
 
     @staticmethod
-    def find_factors_impl(n, s, res: list):
+    def _find_factors_impl(n, s, res: list):
         if MillerRabin.is_prime(n, s):
             res.append(n)
             return
         p = n
         while p >= n:
             p = MillerRabin.pollard_rho_algorithm(p, random.randint(2, n-1))
-        MillerRabin.find_factors_impl(p, s, res)
-        MillerRabin.find_factors_impl(n//p, s, res)
+        MillerRabin._find_factors_impl(p, s, res)
+        MillerRabin._find_factors_impl(n//p, s, res)
 
     @staticmethod
     def find_factors(n, s=20):
         res = []
-        MillerRabin.find_factors_impl(n, s, res)
+        MillerRabin._find_factors_impl(n, s, res)
         return res
-
-
-def test_miller_rabin():
-
-    @wrap_run_time
-    def test1():
-        n = 2050630921381605153620210217162793974942622874069
-        assert not MillerRabin.is_prime(n)
-        f = MillerRabin.find_factors(n)
-        print("factors of {} is {}".format(n, f))
-        assert reduce(lambda x, y: x*y, f) == n
-
-    test1()
-
-    assert MillerRabin.is_prime(87678262537778991782390312341223827409)
-
-
-if __name__ == '__main__':
-    test_miller_rabin()

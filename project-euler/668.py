@@ -27,13 +27,12 @@ class Solve:
     @wrap_run_time
     def run_optimized(self):
         prime_helper = pybind_utils.gen_prime_helper_with_maxnum(self.n)
-        pybind_utils.prime_helper_init_pi_small(prime_helper)
+        prime_helper.init_pi_small()
         res = self.n
         for p in range(1, 1+int(math.sqrt(self.n))):
-            a = pybind_utils.prime_helper_pi(prime_helper, p-1)
-            b = pybind_utils.prime_helper_pi(prime_helper, self.n // p)
+            a = prime_helper.pi(p-1)
+            b = prime_helper.pi(self.n // p)
             res -= b-a
-        pybind_utils.destroy_prime_helper(prime_helper)
         return res
 
     @wrap_run_time
