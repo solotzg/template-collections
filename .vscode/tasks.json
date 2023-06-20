@@ -41,6 +41,13 @@
             "problemMatcher": []
         },
         {
+            "label": "build_java",
+            "type": "shell",
+            "command": "${workspaceFolder}/.vscode/build-java.sh ${file}",
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
             "label": "build_run_code_coverage",
             "type": "shell",
             "command": "${workspaceFolder}/.vscode/run-code-coverage.sh",
