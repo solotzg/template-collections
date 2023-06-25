@@ -1,0 +1,16 @@
+#!/bin/bash
+
+SCRIPTPATH="$(
+    cd "$(dirname "$0")"
+    pwd -P
+)"
+SRCPATH=$(
+    cd ${SCRIPTPATH}/..
+    pwd -P
+)
+if [ -f ${SCRIPTPATH}/_env.sh ]; then
+    source ${SCRIPTPATH}/_env.sh
+fi
+
+CLANG_FORMAT=${CLANG_FORMAT:-"clang-format"}
+"${CLANG_FORMAT}" $@

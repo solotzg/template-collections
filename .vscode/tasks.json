@@ -224,12 +224,6 @@
             "problemMatcher": []
         },
         {
-            "label": "cmake-fmt",
-            "type": "shell",
-            "command": "cmake-format -i ${file}", // `python3 -m pip install cmakelang`
-            "problemMatcher": []
-        },
-        {
             "label": "clean",
             "type": "shell",
             "command": "rm -rf ${workspaceFolder}/cmake-build-*",
