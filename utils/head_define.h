@@ -15,7 +15,7 @@
 #define _ranged_step(i, a, b, s) _rep_impl(i, a, b, <=, +=, s)
 #define rev_repd(i, a, b) _rep_impl(i, a, b, >=, -=, 1)
 #define rev_rep(i, a, b) _rep_impl(i, a, b, >, -=, 1)
-#define bit(num, index) (((num) >> (index)) & 1)
+#define bit_test(num, index) (((num) >> (index)) & 1)
 
 typedef long long LL;
 typedef unsigned long long ULL;

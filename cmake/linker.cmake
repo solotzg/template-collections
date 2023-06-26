@@ -36,6 +36,9 @@ endif()
 option(ENABLE_THINLTO "Clang-specific link time optimization" OFF)
 
 if(ENABLE_THINLTO)
+  set(THINLTO_JOBS
+      "0"
+      CACHE STRING "ThinLTO compilation parallelism")
   # Link time optimization
   set(_THIN_LTO_FLAGS
       "-flto=thin -fvisibility=hidden -fvisibility-inlines-hidden -fsplit-lto-unit"
@@ -43,9 +46,6 @@ if(ENABLE_THINLTO)
   set(_THIN_LTO_CXX_FLAGS "${_THIN_LTO_FLAGS} -fwhole-program-vtables")
   set(_THIN_LTO_LINKER_FLAGS
       "${_THIN_LTO_CXX_FLAGS} -flto-jobs=${THINLTO_JOBS}")
-  set(THINLTO_JOBS
-      "0"
-      CACHE STRING "ThinLTO compilation parallelism")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${_THIN_LTO_FLAGS}")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_THIN_LTO_CXX_FLAGS}")
   set(CMAKE_EXE_LINKER_FLAGS
