@@ -1,5 +1,4 @@
-# Algorithm Template
+# Template Collections
 
-personal algorithm template
-
-
+- algorithm templates
+- utils
