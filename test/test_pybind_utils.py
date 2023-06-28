@@ -10,8 +10,8 @@ class TestPyBindUtils(unittest.TestCase):
         prime_helper = pybind_utils.gen_prime_helper_with_maxnum(n)
         prime_helper.init_pi_small()
         a: dict = prime_helper.decompose(n)
-        assert reduce(lambda x, y: x*y, [k**v for k, v in a.items()]) == n
-        y = sum([1 for i in range(1, n+1) if prime_helper.is_prime(i)])
+        assert reduce(lambda x, y: x*y, (k**v for k, v in a.items())) == n
+        y = sum(1 for i in range(1, n+1) if prime_helper.is_prime(i))
         x = prime_helper.pi(n)
         assert y == x
 

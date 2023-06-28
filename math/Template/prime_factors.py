@@ -80,6 +80,21 @@ class PrimeHelper:
             i -= 1
         return s
 
+    def decompose(self, n):
+        res = []
+        for p in self.primes:
+            if p * p > n:
+                break
+            if n % p == 0:
+                c = 0
+                while n % p == 0:
+                    c += 1
+                    n //= p
+                res.append((p, c))
+        if n != 1:
+            res.append((n, 1))
+        return res
+
 
 def icbrt(n):
     s = int(n ** (1.0 / 3))
