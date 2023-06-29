@@ -41,9 +41,9 @@
             "problemMatcher": []
         },
         {
-            "label": "build_java",
+            "label": "build_java_utils",
             "type": "shell",
-            "command": "${workspaceFolder}/.vscode/build-java.sh ${file}",
+            "command": "cd ${workspaceFolder}/JavaUtils && mvn package -DskipTests",
             "dependsOrder": "sequence",
             "problemMatcher": []
         },
