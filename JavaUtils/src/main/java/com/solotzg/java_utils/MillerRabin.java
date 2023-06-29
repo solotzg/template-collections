@@ -1,4 +1,4 @@
-package com;
+package com.solotzg.java_utils;
 
 // import java.io.FileInputStream;
 // import java.io.PrintStream;
