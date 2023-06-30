@@ -234,9 +234,9 @@ struct PrimeHelper {
     return res;
   }
 
-  std::unordered_map<uint64_t, uint64_t> DecomposeSTL(T num) {
-    std::unordered_map<uint64_t, uint64_t> res;
-    Decompose(num, [&](uint64_t f, uint64_t cnt) { res.emplace(f, cnt); });
+  std::vector<std::pair<uint64_t, uint64_t>> DecomposeSTL(T num) {
+    std::vector<std::pair<uint64_t, uint64_t>> res;
+    Decompose(num, [&](uint64_t f, uint64_t cnt) { res.emplace_back(f, cnt); });
     return res;
   }
 

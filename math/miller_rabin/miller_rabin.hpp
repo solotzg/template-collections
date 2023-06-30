@@ -42,26 +42,13 @@ private:
     if (x == 1 || x == n - 1)
       return true;
     rp(_, t) {
-      x = x * x % n;
+      x = Modulo::mul_mod(x, x, n);
       if (x == 1)
         return false;
       if (x == n - 1)
         return true;
     }
     return false;
-  }
-
-  int64_t gcd(int64_t a, int64_t b) {
-    if (a == 0)
-      return 1;
-    if (a < 0)
-      return gcd(-a, b);
-    while (b) {
-      int64_t t = a % b;
-      a = b;
-      b = t;
-    }
-    return a;
   }
 
   // pollard_rho algorithm
@@ -72,7 +59,7 @@ private:
     while (1) {
       i++;
       x0 = (Modulo::mul_mod(x0, x0, x) + c) % x;
-      int64_t d = gcd(y - x0, x);
+      int64_t d = std::gcd(y - x0, x);
       if (d != 1 && d != x)
         return d;
       if (y == x0)
@@ -130,6 +117,12 @@ static void _test_miller_rabin() {
       });
       ASSERT_EQ(num, p);
     }
+  }
+
+  {
+    auto n = m.FindFacs(3040419601);
+    ASSERT_EQ(n.size(), 1);
+    ASSERT_EQ(n.back(), 3040419601);
   }
 }
 } // namespace tests
