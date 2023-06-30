@@ -8,9 +8,14 @@ struct MillerRabin {
 public:
   std::vector<int64_t> FindFacs(int64_t n) {
     std::vector<int64_t> factors; // factorization no order
-    FindFacsImpl(n, factors);
+    FindFacsImpl(n, [&](int64_t n) { factors.emplace_back(n); });
     return factors;
   }
+
+  template <typename F> void FindFacs(int64_t n, F &&handle_fac) {
+    FindFacsImpl(n, std::forward<F>(handle_fac));
+  }
+
   MillerRabin(int check_times = 20) : check_times_(check_times) {}
 
   // miller_rabin, return `true` if prime
@@ -71,16 +76,16 @@ private:
     }
   }
 
-  void FindFacsImpl(int64_t n, std::vector<int64_t> &factors) {
+  template <typename F> void FindFacsImpl(int64_t n, F &&handle_fac) {
     if (IsPrime(n)) {
-      factors.emplace_back(n);
+      handle_fac(n);
       return;
     }
     int64_t p = n;
     while (p >= n)
       p = PollardsRho(p, random() % (n - 1) + 1);
-    FindFacsImpl(p, factors);
-    FindFacsImpl(n / p, factors);
+    FindFacsImpl(p, std::forward<F>(handle_fac));
+    FindFacsImpl(n / p, std::forward<F>(handle_fac));
   }
 
 private:
