@@ -280,3 +280,12 @@ typedef __int128 INT128;
 #define FMT_LOG_TIME_POINT "[{:%Y-%m-%d %H:%M:%S}.{:03d}]"
 #define FMT_LOG_MSG_DETAIL "[{}:{}][{}][tid={}]"
 #define FMT_LOG_MSG FMT_LOG_TIME_POINT FMT_LOG_MSG_DETAIL
+
+#ifdef NDEBUG
+#define DEBUG_SCOPE(...)
+#else
+#define DEBUG_SCOPE(...)                                                       \
+  do {                                                                         \
+    __VA_ARGS__;                                                               \
+  } while (false)
+#endif
