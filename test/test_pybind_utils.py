@@ -14,6 +14,10 @@ class TestPyBindUtils(unittest.TestCase):
         y = sum(1 for i in range(1, n+1) if prime_helper.is_prime(i))
         x = prime_helper.pi(n)
         assert y == x
+        primes = prime_helper.primes()
+
+        prime_helper2 = PrimeHelper.with_max_len(130)
+        assert prime_helper2.primes == primes[:31]
 
     @unittest.skip
     def test_miller_rabin_big(self):

@@ -3,6 +3,10 @@ import array
 
 
 class PrimeHelper:
+    @staticmethod
+    def with_max_len(max_len):
+        return PrimeHelper(max_len**2)
+
     def __init__(self, maxn):
         self._maxn = maxn
         self._max_size = math.floor(math.sqrt(self._maxn)) + 1
