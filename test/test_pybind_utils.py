@@ -6,18 +6,23 @@ from py_utils import *
 class TestPyBindUtils(unittest.TestCase):
 
     def test_prime_helper(self):
+        def run(n, prime_helper):
+            a: list = prime_helper.decompose(n)
+            assert reduce(lambda x, y: x*y, (k**v for k, v in a)) == n
+            y = sum(1 for i in range(1, n+1) if prime_helper.is_prime(i))
+            x = prime_helper.pi(n)
+            assert y == x
+
         n = 600000
         prime_helper = pybind_utils.gen_prime_helper_with_maxnum(n)
         prime_helper.init_pi_small()
-        a: list = prime_helper.decompose(n)
-        assert reduce(lambda x, y: x*y, (k**v for k, v in a)) == n
-        y = sum(1 for i in range(1, n+1) if prime_helper.is_prime(i))
-        x = prime_helper.pi(n)
-        assert y == x
-        primes = prime_helper.primes()
 
-        prime_helper2 = PrimeHelper.with_max_len(130)
-        assert prime_helper2.primes == primes[:31]
+        prime_helper2 = PrimeHelper(n)
+        prime_helper2.init_pi_small()
+        assert prime_helper2.primes() == prime_helper.primes()
+
+        run(n, prime_helper)
+        run(n, prime_helper2)
 
     @unittest.skip
     def test_miller_rabin_big(self):

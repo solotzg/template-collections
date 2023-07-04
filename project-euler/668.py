@@ -16,7 +16,7 @@ class Solve:
     @wrap_run_time
     def run(self):
         self.prime_helper = PrimeHelper(self.n)
-        self.prime_helper.init_pi()
+        self.prime_helper.init_pi_small()
         res = self.n
         for p in range(1, 1+int(math.sqrt(self.n))):
             a = self.prime_helper.pi(p-1)

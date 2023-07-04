@@ -7,8 +7,8 @@ class PrimeHelper:
     def with_max_len(max_len):
         return PrimeHelper(max_len**2)
 
-    def __init__(self, maxn):
-        self._maxn = maxn
+    def __init__(self, max_num):
+        self._maxn = max_num
         self._max_size = math.floor(math.sqrt(self._maxn)) + 1
         try:
             import numpy
@@ -18,7 +18,7 @@ class PrimeHelper:
         self._primes = []
         self._calc_primes()
 
-    def init_pi(self):
+    def init_pi_small(self):
         self._pi_data = array.array('q',  [0] * self._max_size)
         prime_cnt = 0
         for i in range(2, self._max_size):
@@ -26,7 +26,6 @@ class PrimeHelper:
                 prime_cnt += 1
             self._pi_data[i] = prime_cnt
 
-    @property
     def primes(self):
         return self._primes
 
@@ -38,7 +37,7 @@ class PrimeHelper:
         if 0 == (n & 1):
             return False
 
-        for p in self.primes:
+        for p in self.primes():
             if p * p > n:
                 break
             if n % p == 0:
@@ -86,7 +85,7 @@ class PrimeHelper:
 
     def decompose(self, n):
         res = []
-        for p in self.primes:
+        for p in self.primes():
             if p * p > n:
                 break
             if n % p == 0:
