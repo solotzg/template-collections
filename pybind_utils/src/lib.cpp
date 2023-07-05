@@ -1,4 +1,4 @@
-#include "math/Template/prime_factors.hpp"
+#include "algorithm/math/Template/prime_factors.hpp"
 #include "pybind_utils/pch.h"
 
 namespace py = pybind11;

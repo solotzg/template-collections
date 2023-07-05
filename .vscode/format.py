@@ -53,7 +53,7 @@ def main():
         if not os.path.exists(file_path):
             continue
         if ' ' in file_path:
-            logger.warn('file {} can not be formatted'.format(file_path))
+            logger.warning('file {} can not be formatted'.format(file_path))
             continue
         files_to_format.append(file_path)
 

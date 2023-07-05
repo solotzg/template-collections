@@ -1,1 +1,1 @@
-../math/miller_rabin/miller_rabin.py
+../algorithm/math/miller_rabin/miller_rabin.py
