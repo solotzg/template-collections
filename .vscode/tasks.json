@@ -48,6 +48,13 @@
             "problemMatcher": []
         },
         {
+            "label": "run_java_test",
+            "type": "shell",
+            "command": "cd ${workspaceFolder}/JavaUtils && mvn test",
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
             "label": "build_run_code_coverage",
             "type": "shell",
             "command": "${workspaceFolder}/.vscode/run-code-coverage.sh",
