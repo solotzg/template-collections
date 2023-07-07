@@ -7,47 +7,40 @@ class Solve:
     def __init__(self) -> None:
         self.cache = {}
 
-    def run(self, n):
+    def find_max_len(self, n):
         max_len = 20
-        prime_helper = PrimeHelper.with_max_len(max_len*10)
-        primes = prime_helper.primes()
-        c = Solve()
         s = 0
-        for sz in range(1, 1 + max_len):
-            for prime in primes:
-                s += c.dp(prime, sz)
-                if s >= n:
-                    break
-            if s >= n:
-                break
+        self.prime_helper = PrimeHelper.with_max_len(max_len * 10)
+        self.primes = self.prime_helper.primes()
 
-        num_end = 10**sz - 1
+        for sz in range(1, 1 + max_len):
+            for prime in self.primes:
+                s += self.dp(prime, sz)
+                if s >= n:
+                    return sz
+        assert False
+
+    def run(self, n):
+        max_len = self.find_max_len(n)
+        num_end = 10 ** max_len - 1
         num_bg = 2
 
         while num_bg < num_end:
-            s = 0
             mid = (num_bg+num_end)//2
-            ss = [int(c) for c in str(mid)]
-            ss.reverse()
-            pp = 0
-            lens = len(ss)
-            for pos in range(lens - 1, -1, -1):
+            ss = [int(c) for c in reversed(str(mid))]
+            s = 1 if self.prime_helper.is_prime(sum(ss)) else 0
+            pre_sum = 0
+            for pos in range(len(ss) - 1, -1, -1):
                 for u in range(0, ss[pos]):
-                    tp = pp + u
-                    for prime in primes:
-                        s += c.dp(prime - tp, pos)
+                    for prime in self.primes:
+                        s += self.dp(prime - (pre_sum + u), pos)
                         if s >= n:
                             break
-                pp += ss[pos]
                 if s >= n:
                     break
-
-            pp = sum(ss)
-            if prime_helper.is_prime(pp):
-                s += 1
-
+                pre_sum += ss[pos]
             if s < n:
-                num_bg = mid+1
+                num_bg = mid + 1
             else:
                 num_end = mid
         return num_bg
@@ -62,9 +55,7 @@ class Solve:
             return 1
         if n == 0:
             return 0
-        r = 0
-        for x in range(0, 10):
-            r += self.dp(remain - x, n-1)
+        r = sum(self.dp(remain - x, n-1) for x in range(0, 10))
         self.cache[(remain, n)] = r
         return r
 
@@ -72,7 +63,8 @@ class Solve:
 @wrap_run_time
 def main():
     n = 10**16
-    print(Solve().run(n))
+    res = Solve().run(n)
+    assert res == 45009328011709400
 
 
 if __name__ == '__main__':

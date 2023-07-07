@@ -317,7 +317,7 @@ static void bench_mpsc_fastbin_alloc(size_t producer_size, size_t test_loop,
       waiter.Wait();
       size_t full_cnt = 0;
       for (int i = 0; i < test_loop; ++i) {
-        while (!mpsc_worker.TryPush(id, id)) {
+        while (!mpsc_worker.TryPush(id, BenchElementType(id))) {
           ++full_cnt;
           std::this_thread::yield();
         }

@@ -63,7 +63,7 @@ target_include_directories(CPPTest PUBLIC ${PROJECT_SOURCE_DIR})
 target_link_libraries(CPPTest utils)
 
 option(ENABLE_BENCHMARK "enable build benchmark" OFF)
-if(ENABLE_BENCHMARK AND NOT CMAKE_BUILD_TYPE_UC STREQUAL "DEBUG")
+if(ENABLE_BENCHMARK)
   add_subdirectory(bench)
 endif()
 
