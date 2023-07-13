@@ -1,5 +1,5 @@
 
-#include "data_structure/Template/matrix_operation.hpp"
+#include "algorithm/data_structure/Template/matrix_operation.hpp"
 
 constexpr uint64_t get_mod() {
   uint64_t r = 1;
@@ -8,15 +8,15 @@ constexpr uint64_t get_mod() {
   return r;
 }
 using M = Matrix<int64_t, 2, 2>;
-using OP = OperatorWithModulo<int64_t, INT128>;
+using OP = utils::OperatorWithModulo<int64_t, I128>;
 
 int64_t F(int64_t n, int64_t x) {
   auto b = x * x + x - 1;
   auto mod = get_mod() * b;
 
-  int64_t a1 = OP::mul_mod(M::Fibonacci<INT128>(n, mod),
-                           OP::pow_mod(x, n + 2, mod), mod);
-  int64_t a2 = OP::mul_mod(M::Fibonacci<INT128>(n + 1, mod),
+  int64_t a1 =
+      OP::mul_mod(M::Fibonacci<I128>(n, mod), OP::pow_mod(x, n + 2, mod), mod);
+  int64_t a2 = OP::mul_mod(M::Fibonacci<I128>(n + 1, mod),
                            OP::pow_mod(x, n + 1, mod), mod);
   auto a = OP::add_mod(a1, a2, mod);
   a = OP::add_mod(a, -x, mod);

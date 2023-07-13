@@ -25,12 +25,12 @@ typedef std::vector<ULL> VULL;
 typedef std::pair<int, int> PII;
 typedef std::vector<PII> VPII;
 
-#ifdef __GNUC__
-
-typedef unsigned __int128 UINT128;
-typedef __int128 INT128;
-
-#endif
+typedef __uint128_t U128;
+typedef __int128_t I128;
+typedef uint64_t U64;
+typedef int64_t I64;
+typedef uint32_t U32;
+typedef int32_t I32;
 
 #define likely(x) (__builtin_expect(!!(x), 1))
 #define unlikely(x) (__builtin_expect(!!(x), 0))

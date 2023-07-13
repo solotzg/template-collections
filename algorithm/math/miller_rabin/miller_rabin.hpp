@@ -3,7 +3,7 @@
 #include "utils/utils.h"
 
 struct MillerRabin {
-  using Modulo = utils::OperatorWithModulo<int64_t, INT128>;
+  using Modulo = utils::OperatorWithModulo<int64_t, I128>;
 
 public:
   std::vector<int64_t> FindFacs(int64_t n) {

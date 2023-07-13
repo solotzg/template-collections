@@ -8,7 +8,7 @@
 #include <limits>
 #include <sstream>
 
-template <size_t N, int M = 5, typename T = int64_t, typename UP = __int128_t>
+template <size_t N, int M = 5, typename T = int64_t, typename UP = I128>
 struct BigInt {
   using Data = std::array<T, N>;
   static constexpr size_t BitCnt = (sizeof(T) * 8 - M);

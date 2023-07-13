@@ -31,7 +31,7 @@ struct Unit : VU8 {
   }
 };
 
-inline uint64_t fast_pow(uint64_t n, UINT128 pow, uint64_t mod) {
+inline uint64_t fast_pow(uint64_t n, U128 pow, uint64_t mod) {
   uint64_t r = 1, p = n;
   while (pow) {
     if (pow & 1)
@@ -47,7 +47,7 @@ int main() {
   SHOW_TIME_COST();
   Unit n11(VU8{1, 1, 0, 1});
   auto x = n11.pow(utils::fast_pow(3, 8));
-  UINT128 n = 1ull << 52;
+  U128 n = 1ull << 52;
   ULL res = 0;
   rev_rep(i, x.size() - 1, -1) {
     if (!x[i])

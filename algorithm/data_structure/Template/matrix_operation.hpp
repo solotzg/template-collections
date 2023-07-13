@@ -58,7 +58,7 @@ static void _test_matrix() {
   using M = Matrix<uint64_t, 2, 2>;
   uint64_t a = 0, b = 1, n = 0;
   for (; n < 1000; n++) {
-    ASSERT(a == M::Fibonacci<UINT128>(n, MOD));
+    ASSERT(a == M::Fibonacci<U128>(n, MOD));
     auto c = (a + b) % MOD;
     a = b;
     b = c;
