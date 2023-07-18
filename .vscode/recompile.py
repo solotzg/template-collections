@@ -82,7 +82,7 @@ class Runner:
 
     def run_objdump(self):
         obj_file = self.get_obj_file_path(self.args.file)
-        saved_file = "/tmp/.tzg_objdump_{}.txt".format(
+        saved_file = "/tmp/.tzg._objdump_{}.txt".format(
             obj_file.replace('/', '.')
         )
         cmd = "objdump -C -r -d {} > {}".format(obj_file, saved_file)
