@@ -4,10 +4,10 @@
 
 #define CONCAT_(prefix, suffix) prefix##suffix
 #define CONCAT(prefix, suffix) CONCAT_(prefix, suffix)
+#define LNAME(name) CONCAT(_n_##name##_l_, __LINE__)
 
 #define _rep_impl(i, a, b, cmp, op, step)                                      \
-  for (int64_t i = (a), CONCAT(__##i##_, __LINE__) = int64_t(b);               \
-       i cmp CONCAT(__##i##_, __LINE__); i op(step))
+  for (int64_t i = (a), LNAME(i) = int64_t(b); i cmp LNAME(i); i op(step))
 #define rep(i, a, b) _rep_impl(i, a, b, <, +=, 1)
 #define rp(i, b) rep(i, 0, b)
 #define repd(i, a, b) _rep_impl(i, a, b, <=, +=, 1)
@@ -43,7 +43,6 @@ typedef int8_t I8;
 #define ALWAYS_INLINE static __attribute__((always_inline))
 #define NO_INLINE __attribute__((__noinline__))
 
-#define CAT(a, b) CONCAT(a, b)
 #define FIRST(first, ...) first
 #define SECOND(first, second, ...) second
 #define MSG_ENDL(ostr)                                                         \
@@ -88,8 +87,8 @@ typedef int8_t I8;
 
 #define RUNTIME_ASSERT(expr, ...)                                              \
   do {                                                                         \
-    auto &&r = (expr);                                                         \
-    if (!r) {                                                                  \
+    auto &&LNAME(r) = (expr);                                                  \
+    if (!LNAME(r)) {                                                           \
       COUT_MSGLN_NO_SPLIT("Assert fails at ", __FILE__, ":", __LINE__);        \
       COUT_MSGLN_NO_SPLIT("  ", #expr);                                        \
       PANIC(__VA_ARGS__);                                                      \
@@ -102,62 +101,62 @@ typedef int8_t I8;
   } while (false)
 #define RUNTIME_ASSERT_EQ(expr1, expr2, ...)                                   \
   do {                                                                         \
-    auto &&r1 = (expr1);                                                       \
-    auto &&r2 = (expr2);                                                       \
-    if (!(r1 == r2)) {                                                         \
+    auto &&LNAME(r1) = (expr1);                                                \
+    auto &&LNAME(r2) = (expr2);                                                \
+    if (!(LNAME(r1) == LNAME(r2))) {                                           \
       COUT_MSGLN_NO_SPLIT("Not EQ at ", __FILE__, ":", __LINE__);              \
-      SHOW_EXPRESSION(expr1, r1, expr2, r2);                                   \
+      SHOW_EXPRESSION(expr1, LNAME(r1), expr2, LNAME(r2));                     \
       PANIC(__VA_ARGS__);                                                      \
     }                                                                          \
   } while (false)
 #define RUNTIME_ASSERT_NE(expr1, expr2, ...)                                   \
   do {                                                                         \
-    auto &&r1 = (expr1);                                                       \
-    auto &&r2 = (expr2);                                                       \
-    if (r1 == r2) {                                                            \
+    auto &&LNAME(r1) = (expr1);                                                \
+    auto &&LNAME(r2) = (expr2);                                                \
+    if (LNAME(r1) == LNAME(r2)) {                                              \
       COUT_MSGLN_NO_SPLIT("Not NE at ", __FILE__, ":", __LINE__);              \
-      SHOW_EXPRESSION(expr1, r1, expr2, r2);                                   \
+      SHOW_EXPRESSION(expr1, LNAME(r1), expr2, LNAME(r2));                     \
       PANIC(__VA_ARGS__);                                                      \
     }                                                                          \
   } while (false)
 #define RUNTIME_ASSERT_GT(expr1, expr2, ...)                                   \
   do {                                                                         \
-    auto &&r1 = (expr1);                                                       \
-    auto &&r2 = (expr2);                                                       \
-    if (!(r1 > r2)) {                                                          \
+    auto &&LNAME(r1) = (expr1);                                                \
+    auto &&LNAME(r2) = (expr2);                                                \
+    if (!(LNAME(r1) > LNAME(r2))) {                                            \
       COUT_MSGLN_NO_SPLIT("Not GT at ", __FILE__, ":", __LINE__);              \
-      SHOW_EXPRESSION(expr1, r1, expr2, r2);                                   \
+      SHOW_EXPRESSION(expr1, LNAME(r1), expr2, LNAME(r2));                     \
       PANIC(__VA_ARGS__);                                                      \
     }                                                                          \
   } while (false)
 #define RUNTIME_ASSERT_GE(expr1, expr2, ...)                                   \
   do {                                                                         \
-    auto &&r1 = (expr1);                                                       \
-    auto &&r2 = (expr2);                                                       \
-    if (!(r1 >= r2)) {                                                         \
+    auto &&LNAME(r1) = (expr1);                                                \
+    auto &&LNAME(r2) = (expr2);                                                \
+    if (!(LNAME(r1) >= LNAME(r2))) {                                           \
       COUT_MSGLN_NO_SPLIT("Not GE at ", __FILE__, ":", __LINE__);              \
-      SHOW_EXPRESSION(expr1, r1, expr2, r2);                                   \
+      SHOW_EXPRESSION(expr1, LNAME(r1), expr2, LNAME(r2));                     \
       PANIC(__VA_ARGS__);                                                      \
     }                                                                          \
   } while (false)
 #define RUNTIME_ASSERT_LT(expr1, expr2, ...)                                   \
   do {                                                                         \
-    auto &&r1 = (expr1);                                                       \
-    auto &&r2 = (expr2);                                                       \
-    if (!(r1 < r2)) {                                                          \
+    auto &&LNAME(r1) = (expr1);                                                \
+    auto &&LNAME(r2) = (expr2);                                                \
+    if (!(LNAME(r1) < LNAME(r2))) {                                            \
       COUT_MSGLN_NO_SPLIT("Not LT at ", __FILE__, ":", __LINE__);              \
-      SHOW_EXPRESSION(expr1, r1, expr2, r2);                                   \
+      SHOW_EXPRESSION(expr1, LNAME(r1), expr2, LNAME(r2));                     \
       PANIC(__VA_ARGS__);                                                      \
     }                                                                          \
   } while (false)
 
 #define RUNTIME_ASSERT_LE(expr1, expr2, ...)                                   \
   do {                                                                         \
-    auto &&r1 = (expr1);                                                       \
-    auto &&r2 = (expr2);                                                       \
-    if (!(r1 <= r2)) {                                                         \
+    auto &&LNAME(r1) = (expr1);                                                \
+    auto &&LNAME(r2) = (expr2);                                                \
+    if (!(LNAME(r1) <= LNAME(r2))) {                                           \
       COUT_MSGLN_NO_SPLIT("Not LE at ", __FILE__, ":", __LINE__);              \
-      SHOW_EXPRESSION(expr1, r1, expr2, r2);                                   \
+      SHOW_EXPRESSION(expr1, LNAME(r1), expr2, LNAME(r2));                     \
       PANIC(__VA_ARGS__);                                                      \
     }                                                                          \
   } while (false)
@@ -246,28 +245,28 @@ typedef int8_t I8;
 
 #define LOG_IMPL_0(message)                                                    \
   do {                                                                         \
-    auto &&s = TO_LOG_MSG_ADD_TIME((message));                                 \
-    utils::STDCout(s);                                                         \
+    auto &&LNAME(s) = TO_LOG_MSG_ADD_TIME((message));                          \
+    utils::STDCout(LNAME(s));                                                  \
   } while (false)
 
 #define LOG_IMPL_1(fmt_str, ...)                                               \
   do {                                                                         \
-    auto &&s = TO_LOG_FMSG_ADD_TIME((fmt_str), __VA_ARGS__);                   \
-    utils::STDCout(s);                                                         \
+    auto &&LNAME(s) = TO_LOG_FMSG_ADD_TIME((fmt_str), __VA_ARGS__);            \
+    utils::STDCout(LNAME(s));                                                  \
   } while (false)
 
 #define LOG_INFO(...) LOG_IMPL_CHOSER(__VA_ARGS__)(__VA_ARGS__)
 
 #define ASYNC_LOG_IMPL_0(logger, message)                                      \
   do {                                                                         \
-    auto &&s = TO_LOG_MSG((message));                                          \
-    (*(logger)).Put(std::move(s));                                             \
+    auto &&LNAME(s) = TO_LOG_MSG((message));                                   \
+    (*(logger)).Put(std::move(LNAME(s)));                                      \
   } while (false)
 
 #define ASYNC_LOG_IMPL_1(logger, fmt_str, ...)                                 \
   do {                                                                         \
-    auto &&s = TO_LOG_FMSG((fmt_str), __VA_ARGS__);                            \
-    (*(logger)).Put(std::move(s));                                             \
+    auto &&LNAME(s) = TO_LOG_FMSG((fmt_str), __VA_ARGS__);                     \
+    (*(logger)).Put(std::move(LNAME(s)));                                      \
   } while (false)
 
 #define ASYNC_LOG_INFO(logger, ...)                                            \
