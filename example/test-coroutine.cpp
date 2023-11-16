@@ -1,9 +1,10 @@
 #include "utils/async-log.hpp"
-#include "utils/coroutine-header.h"
 #include <filesystem>
 #include <fstream>
 
 #define LOG_ASYNC_MODE 0
+
+std::atomic_uint64_t global_seq{};
 
 #if LOG_ASYNC_MODE
 static auto *logger = &utils::AsyncLogger::GlobalSTDOUT();
@@ -11,6 +12,11 @@ static auto *logger = &utils::AsyncLogger::GlobalSTDOUT();
 #else
 #define LOG(...) LOG_INFO(__VA_ARGS__)
 #endif
+#define LOG_DEBUG_SEQ(fmt_str, ...)                                            \
+  do {                                                                         \
+    auto &&__seq = ++global_seq;                                               \
+    LOG_INFO(("({}. " fmt_str), __seq, __VA_ARGS__);                           \
+  } while (0)
 
 namespace example {
 
@@ -22,66 +28,88 @@ struct TestCoRunner : utils::async::CoRunner<CoExecutor, TestPromise> {
   using Base = utils::async::CoRunner<CoExecutor, TestPromise>;
   using Base::Base;
 
-  ~TestCoRunner() { LOG(__PRETTY_FUNCTION__); }
-
-  TestCoRunner(Handle handle) : Base(handle) { LOG("2.1 create task"); }
+  ~TestCoRunner() {
+    LOG_DEBUG_SEQ("{}", "destruct `TestCoRunner` and destroy `TestPromise`");
+  }
+  TestCoRunner(Handle handle) : Base(handle) {
+    LOG_DEBUG_SEQ("construct {}", __FUNCTION__);
+  }
+  TestCoRunner(void *) : Base(nullptr) {}
   TestCoRunner(TestCoRunner &&) = default;
+};
+
+struct TestNode {
+  TestNode() {
+    msg = "Ori";
+    LOG_DEBUG_SEQ("{}", __PRETTY_FUNCTION__);
+  }
+  TestNode(const TestNode &src) {
+    msg = fmt::format("copy from {}", src.msg);
+    LOG_DEBUG_SEQ("{}", __PRETTY_FUNCTION__);
+  }
+  TestNode(TestNode &&src) {
+    msg = fmt::format("move from {}", src.msg);
+    LOG_DEBUG_SEQ("{}", __PRETTY_FUNCTION__);
+  }
+  ~TestNode() { LOG_DEBUG_SEQ("{}. MSG: `{}`", __PRETTY_FUNCTION__, msg); }
+  std::string msg;
 };
 
 struct TestPromise : utils::async::CoPromise<CoExecutor, void, false> {
   using Base = utils::async::CoPromise<CoExecutor, void, false>;
-  TestPromise(CoExecutor &c) : Base(c) { LOG("1. create promie object"); }
+  TestPromise(TestNode n) {
+    LOG_DEBUG_SEQ("construct promie object, using TestNode(`{}`)", n.msg);
+  }
   auto get_return_object() {
-    LOG("2. create coroutine return object, and the coroutine is "
-        "created now");
+    LOG_DEBUG_SEQ("{}", "create coroutine return object");
     return std_coro::coroutine_handle<TestPromise>::from_promise(*this);
   }
   auto initial_suspend() {
-    LOG("3. do you want to susupend the current coroutine?");
-    LOG("4. suspend because return std_coro::suspend_always");
+    LOG_DEBUG_SEQ("{}", "initial suspend to executor");
     return Base::initial_suspend();
   }
   auto final_suspend() noexcept {
-    LOG("13. coroutine body finished, do you want to susupend the "
-        "current coroutine?");
-    LOG("14. suspend because return std_coro::suspend_always");
+    LOG_DEBUG_SEQ("{}", "coroutine body finished, suspend because return "
+                        "std_coro::suspend_always");
     return Base::final_suspend();
   }
   void return_void() {
-    LOG("12. coroutine don't return value, so return_void is called");
+    LOG_DEBUG_SEQ("{}",
+                  "coroutine don't return value, so return_void is called");
   }
-  ~TestPromise() { LOG(__PRETTY_FUNCTION__); }
+  ~TestPromise() { LOG_DEBUG_SEQ("{}", __PRETTY_FUNCTION__); }
 };
 
 struct AsyncDelayTask {
   bool await_ready() {
-    LOG("6. do you want to suspend current coroutine?");
-    LOG("7. yes, suspend becase awaiter.await_ready() return false");
+    LOG_DEBUG_SEQ(
+        "{}",
+        "`AsyncDelayTask` suspend becase awaiter.await_ready() return false");
     return false;
   }
   template <typename Handle> void await_suspend(Handle handle) {
-    LOG("8. execute awaiter.await_suspend()");
+    LOG_DEBUG_SEQ("{}", "`AsyncDelayTask` execute awaiter.await_suspend()");
 
     handle.promise().co_executor()->timer().Schedule(
         [c = resume_context_](bool) mutable {
-          LOG("`AsyncDelayTask` finish");
+          LOG_DEBUG_SEQ("{}", "`AsyncDelayTask` finish");
           c->Notify();
-          LOG("`AsyncDelayTask` notify");
+          LOG_DEBUG_SEQ("{}", "`AsyncDelayTask` notify");
         },
         duration_);
 
     handle.promise().co_executor()->Push(
         handle, [c = resume_context_](const utils::AsyncNotifierPtr &notifer) {
-          LOG("`AsyncDelayTask` try to poll once");
+          LOG_DEBUG_SEQ("{}", "`AsyncDelayTask` try to poll once");
           auto res = c->Poll(notifer);
-          LOG("`AsyncDelayTask` poll result is {}", res);
+          LOG_DEBUG_SEQ("`AsyncDelayTask` poll result is {}", res);
           return res;
         });
 
-    LOG("9. schedule a delay task for {}", duration_);
+    LOG_DEBUG_SEQ("`AsyncDelayTask` schedule a delay task for {}", duration_);
   }
 
-  void await_resume() { LOG("10. {}", __PRETTY_FUNCTION__); }
+  void await_resume() { LOG_DEBUG_SEQ("{}", __PRETTY_FUNCTION__); }
 
   AsyncDelayTask(utils::Milliseconds duration,
                  const utils::async::ResumeAblePtr &resume_context =
@@ -121,10 +149,9 @@ struct AwaitTask : utils::async::CoRunner<CoExecutor, AwaitTaskPromise> {
   using Base::Base;
 
   template <typename NextHandle> void await_suspend(NextHandle next_handle) {
-    auto *co_executor =
-        handle().promise().mut_co_executor(next_handle.promise().co_executor());
-    co_executor->Push(handle());
-    handle().promise().mut_next_handle(next_handle);
+    handle().promise().co_executor() = next_handle.promise().co_executor();
+    handle().promise().next_handle() = next_handle;
+    handle().promise().co_executor()->Push(handle());
   }
   constexpr bool await_ready() { return false; }
   int await_resume() {
@@ -215,7 +242,7 @@ AwaitTask suspend_five() {
   co_return 1 + a + b;
 }
 
-RootTask run(CoExecutor &) {
+RootTask run() {
   LOG("run");
   auto a = co_await suspend_five();
   auto b = co_await suspend_five();
@@ -234,28 +261,33 @@ static void _test_coroutine() {
   utils::AsyncSteadyTaskRunner steady_task_runner(true);
   auto worker =
       steady_task_runner.AddTask(std::make_shared<utils::TaskPoolWorker>());
-  CoExecutor context(utils::DelegateWheelTimer::GlobalDelegateInstance(),
-                     worker);
-
-  auto t = [](CoExecutor &) -> example::TestCoRunner {
-    LOG("5. begin to execute coroutine body");
+  CoExecutor executor(utils::DelegateWheelTimer::GlobalDelegateInstance(),
+                      worker);
+  LOG_DEBUG_SEQ("{}", "construct executor");
+  auto t = [](example::TestNode) -> example::TestCoRunner {
+    SCOPE_EXIT({
+      LOG_DEBUG_SEQ("{}",
+                    "destroys all variables with automatic storage duration");
+    });
+    LOG_DEBUG_SEQ("{}", "begin to execute coroutine body");
     utils::async::ResumeAblePtr waiter = utils::async::ResumeAble::New();
     co_await example::AsyncDelayTask{utils::Milliseconds{20}, waiter};
-    LOG("11. coroutine resumed, continue execcute coroutine "
-        "body now");
-  }(context);
-  LOG("4.1 init context");
-  utils::async::BlockOn(context);
+    LOG_DEBUG_SEQ("{}", "coroutine resumed, continue execcute coroutine "
+                        "body now");
+  }(example::TestNode{});
+  t.ViaExecutor(&executor);
+  utils::async::BlockOn(executor);
 }
 
 static void _test_coroutine2() {
   utils::AsyncSteadyTaskRunner steady_task_runner(true);
   auto worker =
       steady_task_runner.AddTask(std::make_shared<utils::TaskPoolWorker>());
-  CoExecutor e(utils::DelegateWheelTimer::GlobalDelegateInstance(), worker);
-
-  auto t = example::run(e);
-  utils::async::BlockOn(e);
+  CoExecutor executor(utils::DelegateWheelTimer::GlobalDelegateInstance(),
+                      worker);
+  auto t = example::run();
+  t.ViaExecutor(&executor);
+  utils::async::BlockOn(executor);
 }
 
 } // namespace tests

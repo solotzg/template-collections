@@ -128,15 +128,6 @@ template <typename Task> auto BlockOn(Task &task) {
   }
 }
 
-struct SuspendToExecutor {
-  constexpr bool await_ready() const noexcept { return false; }
-  template <typename HandleType>
-  auto await_suspend(HandleType handle) const noexcept {
-    handle.promise().co_executor()->Push(handle);
-  }
-  constexpr void await_resume() const noexcept {}
-};
-
 struct SuspendToNext {
   constexpr bool await_ready() const noexcept { return false; }
   template <typename HandleType>
@@ -148,15 +139,13 @@ struct SuspendToNext {
 };
 
 template <typename Executor> struct PromiseExecutorWrap {
-  Executor *co_executor() {
+  Executor *co_executor() const {
     ASSERT(co_executor_);
     return co_executor_;
   }
-  Executor *&mut_co_executor(Executor *e) {
-    co_executor_ = e;
-    return co_executor_;
-  }
-  PromiseExecutorWrap(Executor &executor) : co_executor_(&executor) {}
+  Executor *&co_executor() { return co_executor_; }
+
+  auto initial_suspend() noexcept { return std_coro::suspend_always{}; }
   void unhandled_exception() { std::terminate(); }
   void rethrow_if_unhandled_exception() noexcept {}
 
@@ -173,13 +162,9 @@ struct PromiseBase : PromiseExecutorWrap<Executor> {
   using Base::Base;
 
   PromiseBase() = default;
-  CoroutineHandle next_handle() { return next_handle_; }
-  CoroutineHandle &mut_next_handle(CoroutineHandle handle) {
-    next_handle_ = handle;
-    return next_handle_;
-  }
+  CoroutineHandle next_handle() const { return next_handle_; }
+  CoroutineHandle &next_handle() { return next_handle_; }
   auto final_suspend() noexcept { return SuspendToNext{}; }
-  auto initial_suspend() noexcept { return std_coro::suspend_always{}; }
 
 protected:
   CoroutineHandle next_handle_{};
@@ -191,7 +176,6 @@ struct PromiseBase<Executor, false> : PromiseExecutorWrap<Executor> {
   using Base::Base;
 
   PromiseBase(Executor &executor) : Base(executor) {}
-  auto initial_suspend() noexcept { return SuspendToExecutor{}; }
   auto final_suspend() noexcept { return std_coro::suspend_always{}; }
 };
 
@@ -235,9 +219,13 @@ template <typename Executor, typename PromiseType> struct CoRunnerBase {
     src.handle_ = nullptr;
   }
   ~CoRunnerBase() { DestroyHandle(); }
+  void ViaExecutor(Executor *e) {
+    handle_.promise().co_executor() = e;
+    e->Push(handle_);
+  }
 
 protected:
-  const Handle &handle() const { return handle_; }
+  Handle handle() const { return handle_; }
   void DestroyHandle() {
     if (!handle_)
       return;
@@ -280,7 +268,7 @@ using CoExecutor = utils::async::CoExecutor<utils::DelegateWheelTimer,
 
 struct TestPromise : utils::async::CoPromise<CoExecutor, void, false> {
   using Base = utils::async::CoPromise<CoExecutor, void, false>;
-  TestPromise(CoExecutor &co_executor) : Base(co_executor) {}
+  TestPromise() {}
   auto final_suspend() noexcept { return std_coro::suspend_always{}; }
   auto get_return_object() {
     return std_coro::coroutine_handle<TestPromise>::from_promise(*this);
@@ -300,9 +288,11 @@ static void _test_async_sleep() {
   CoExecutor executor(utils::DelegateWheelTimer::GlobalDelegateInstance(),
                       worker);
 
-  auto t = [](CoExecutor &) -> TestCoRunner {
+  auto t = []() -> TestCoRunner {
     co_await utils::async::AsyncSleepFor(utils::Milliseconds{1});
-  }(executor);
+  }();
+  t.ViaExecutor(&executor);
+
   utils::async::BlockOn(executor);
   ASSERT_GT(time_cost.Duration().count(), 1);
 }
