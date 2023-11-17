@@ -15,7 +15,7 @@ static auto *logger = &utils::AsyncLogger::GlobalSTDOUT();
 #define LOG_DEBUG_SEQ(fmt_str, ...)                                            \
   do {                                                                         \
     auto &&__seq = ++global_seq;                                               \
-    LOG_INFO(("({}. " fmt_str), __seq, __VA_ARGS__);                           \
+    LOG_INFO("({}. " fmt_str, __seq, __VA_ARGS__);                             \
   } while (0)
 
 namespace example {

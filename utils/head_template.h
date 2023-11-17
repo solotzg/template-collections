@@ -212,28 +212,9 @@ inline uint64_t get_tid() { return global_thread_id_holder.ThreadID(); }
 
 static constexpr size_t LogTimePointSize = 25;
 
-inline std::string log_str_add_time(const std::string_view file, int line,
-                                    const std::string_view str) {
-  auto &&now = std::chrono::system_clock::now();
-  auto &&millisec =
-      duration_cast<Milliseconds>(now.time_since_epoch()).count() % 1000;
-  return fmt::format(FMT_COMPILE(FMT_LOG_MSG), now, millisec, file, line, str,
-                     get_tid());
-}
-
-inline std::string log_str(const std::string_view file, int line,
-                           const std::string_view str) {
-  return fmt::format(FMT_COMPILE(FMT_LOG_MSG_DETAIL), file, line, str,
-                     get_tid());
-}
-
-inline constexpr std::string_view extract_file_name(std::string_view s) {
-  for (auto p = s.rbegin(); p != s.rend(); ++p) {
-    if (*p == '/') {
-      return s.substr(s.size() - (p - s.rbegin()));
-    }
-  }
-  return s;
+inline constexpr std::string_view extract_file_name(std::string_view sv) {
+  auto &&pos = sv.rfind('/') + 1;
+  return {sv.data() + pos, sv.size() - pos};
 }
 
 } // namespace utils

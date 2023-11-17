@@ -4,7 +4,7 @@
 
 #define CONCAT_(prefix, suffix) prefix##suffix
 #define CONCAT(prefix, suffix) CONCAT_(prefix, suffix)
-#define LNAME(name) CONCAT(_n_##name##_l_, __LINE__)
+#define LNAME(name) CONCAT(_##name##_, __LINE__)
 
 #define _rep_impl(i, a, b, cmp, op, step)                                      \
   for (int64_t i = (a), LNAME(i) = int64_t(b); i cmp LNAME(i); i op(step))
@@ -182,7 +182,7 @@ typedef int8_t I8;
 #endif
 
 #define SHOW_TIME_COST(...)                                                    \
-  utils::TimeCost CONCAT(_time_cost_, __LINE__) { __VA_ARGS__ }
+  utils::TimeCost LNAME(time_cost) { __VA_ARGS__ }
 
 #define FMT_APPEND(out, ...)                                                   \
   do {                                                                         \
@@ -196,19 +196,13 @@ typedef int8_t I8;
   fmt::format_to(std::back_inserter(out), "{}", str_begin);                    \
   SCOPE_EXIT({ fmt::format_to(std::back_inserter(out), "{}", str_end); })
 
-#define TO_LOG_MSG_ADD_TIME(str)                                               \
-  utils::log_str_add_time(                                                     \
-      utils::extract_file_name(std::string_view{__FILE__}), __LINE__, (str))
-
-#define TO_LOG_FMSG_ADD_TIME(fmt_str, ...)                                     \
-  TO_LOG_MSG_ADD_TIME(fmt::format(FMT_COMPILE(fmt_str), __VA_ARGS__))
-
-#define TO_LOG_MSG(str)                                                        \
-  utils::log_str(utils::extract_file_name(std::string_view{__FILE__}),         \
-                 __LINE__, (str))
+#define EXTRACT_FILE_NAME utils::extract_file_name(std::string_view{__FILE__})
 
 #define TO_LOG_FMSG(fmt_str, ...)                                              \
-  TO_LOG_MSG(fmt::format(FMT_COMPILE(fmt_str), __VA_ARGS__))
+  fmt::format(FMT_COMPILE("[{}:{}][" fmt_str "][tid={}]"), EXTRACT_FILE_NAME,  \
+              __LINE__, __VA_ARGS__, utils::get_tid())
+
+#define TO_LOG_MSG(str) TO_LOG_FMSG("{}", (str))
 
 // clang-format off
 #define TF_GET_1ST_ARG(a, ...) a
@@ -243,17 +237,21 @@ typedef int8_t I8;
 #define LOG_IMPL_CHOSER(...) TF_GET_29TH_ARG(__VA_ARGS__, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_0)
 // clang-format on
 
-#define LOG_IMPL_0(message)                                                    \
+#define LOG_IMPL_1(fmt_str, ...)                                               \
   do {                                                                         \
-    auto &&LNAME(s) = TO_LOG_MSG_ADD_TIME((message));                          \
+    auto &&LNAME(now) = std::chrono::system_clock::now();                      \
+    auto &&LNAME(ms) =                                                         \
+        duration_cast<utils::Milliseconds>(LNAME(now).time_since_epoch())      \
+            .count() %                                                         \
+        1000;                                                                  \
+    auto &&LNAME(s) = fmt::format(                                             \
+        FMT_COMPILE(FMT_LOG_TIME_POINT "[{}:{}][" fmt_str "][tid={}]"),        \
+        LNAME(now), LNAME(ms), EXTRACT_FILE_NAME, __LINE__, __VA_ARGS__,       \
+        utils::get_tid());                                                     \
     utils::STDCout(LNAME(s));                                                  \
   } while (false)
 
-#define LOG_IMPL_1(fmt_str, ...)                                               \
-  do {                                                                         \
-    auto &&LNAME(s) = TO_LOG_FMSG_ADD_TIME((fmt_str), __VA_ARGS__);            \
-    utils::STDCout(LNAME(s));                                                  \
-  } while (false)
+#define LOG_IMPL_0(message) LOG_IMPL_1("{}", (message))
 
 #define LOG_INFO(...) LOG_IMPL_CHOSER(__VA_ARGS__)(__VA_ARGS__)
 
@@ -265,7 +263,7 @@ typedef int8_t I8;
 
 #define ASYNC_LOG_IMPL_1(logger, fmt_str, ...)                                 \
   do {                                                                         \
-    auto &&LNAME(s) = TO_LOG_FMSG((fmt_str), __VA_ARGS__);                     \
+    auto &&LNAME(s) = TO_LOG_FMSG(fmt_str, __VA_ARGS__);                       \
     (*(logger)).Put(std::move(LNAME(s)));                                      \
   } while (false)
 
@@ -281,8 +279,6 @@ typedef int8_t I8;
 #endif
 
 #define FMT_LOG_TIME_POINT "[{:%Y-%m-%d %H:%M:%S}.{:03d}]"
-#define FMT_LOG_MSG_DETAIL "[{}:{}][{}][tid={}]"
-#define FMT_LOG_MSG FMT_LOG_TIME_POINT FMT_LOG_MSG_DETAIL
 
 #ifdef NDEBUG
 #define DEBUG_SCOPE(...)
