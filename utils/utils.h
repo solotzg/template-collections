@@ -284,6 +284,7 @@ struct TimeCost {
   TimeCost(std::string_view label = "ROOT", bool auto_show = true);
   ~TimeCost();
   void Show(const char *prefix = nullptr) const;
+  void Show(TimeCost::Clock::duration dur, const char *prefix = nullptr) const;
   void Reset();
   Clock::duration Duration();
 
@@ -363,11 +364,27 @@ template <typename F> NO_INLINE static auto NO_INLINE_FUNC(F &&f) {
 
 void ToUpper(std::string &s);
 std::string ToUpper(std::string_view s);
+void ToLower(std::string &s);
+std::string ToLower(std::string_view s);
 
-inline void STDCout(std::string_view s) {
-  static MutexLockWrap lock;
-  lock.RunWithMutexLock([&] { std::cout << s << std::endl; });
+ALWAYS_INLINE void SerializeTimepoint(char *p,
+                                      const SystemClock::time_point ts) {
+  auto &&millisec =
+      duration_cast<Milliseconds>(ts.time_since_epoch()).count() % 1000;
+  fmt::format_to_n(p, utils::kLogTimePointSize, FMT_COMPILE(FMT_LOG_TIMEPOINT),
+                   ts, millisec);
 }
+
+struct STDCoutGuard {
+  static void Print(std::string_view);
+  static void PrintWithTimepointPrefix(std::string_view);
+  template <typename F> static auto Print(F &&f) {
+    return lock_.RunWithMutexLock(std::forward<F>(f));
+  }
+
+private:
+  static MutexLockWrap lock_;
+};
 
 template <typename T, typename Allocator = std::allocator<T>>
 struct ConstSizeArray {

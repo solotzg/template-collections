@@ -7,11 +7,13 @@ TimeCost::TimeCost(std::string_view label, bool auto_show)
     : label_(label), start_(Clock::now()), auto_show_(auto_show) {}
 
 void TimeCost::Show(const char *prefix) const {
-  auto end = Clock::now();
+  Show(Clock::now() - start_, prefix);
+}
 
+void TimeCost::Show(TimeCost::Clock::duration dur, const char *prefix) const {
   FMSGLN("[{}]{}[time cost: {}]", label_,
          prefix ? fmt::format("[{}]", prefix) : "",
-         std::chrono::duration_cast<Milliseconds>(end - start_));
+         std::chrono::duration_cast<Milliseconds>(dur));
 }
 
 TimeCost::~TimeCost() {
@@ -37,14 +39,36 @@ std::string ToUpper(std::string_view s) {
   ToUpper(res);
   return res;
 }
-
 void ToUpper(std::string &s) {
   for (auto &&c : s) {
-    if (c >= 'a' && c <= 'z') {
-      const int diff = 'A' - 'a';
-      c += diff;
-    }
+    c += (c >= 'a' & c <= 'z') ? ('A' - 'a') : 0;
   }
 }
+
+std::string ToLower(std::string_view s) {
+  std::string res(s);
+  ToLower(res);
+  return res;
+}
+
+void ToLower(std::string &s) {
+  for (auto &&c : s) {
+    c += (c >= 'A' & c <= 'Z') ? ('a' - 'A') : 0;
+  }
+}
+
+void STDCoutGuard::Print(std::string_view s) {
+  lock_.RunWithMutexLock([&] { std::cout << s << std::endl; });
+}
+
+void STDCoutGuard::PrintWithTimepointPrefix(std::string_view str) {
+  std::array<char, utils::kLogTimePointSize> buff;
+  lock_.RunWithMutexLock([&] {
+    SerializeTimepoint(buff.data(), SystemClock::now());
+    std::cout << std::string_view{buff.data(), buff.size()} << str << std::endl;
+  });
+}
+
+MutexLockWrap STDCoutGuard::lock_{};
 
 } // namespace utils

@@ -210,7 +210,7 @@ static auto &global_thread_id_holder = GlobalThreadIDHolder::instance();
 
 inline uint64_t get_tid() { return global_thread_id_holder.ThreadID(); }
 
-static constexpr size_t LogTimePointSize = 25;
+static constexpr size_t kLogTimePointSize = LOG_TIMEPOINT_SIZE;
 
 inline constexpr std::string_view extract_file_name(std::string_view sv) {
   auto &&pos = sv.rfind('/') + 1;

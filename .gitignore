@@ -4,3 +4,6 @@ __pycache__
 *.class
 *.o
 target/
+*.out
+*.a
+bin/

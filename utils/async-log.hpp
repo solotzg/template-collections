@@ -24,24 +24,36 @@ struct UniqAsyncLog : MutexLockWrap {
       msg = std::move(src.msg);
       return *this;
     }
+
+    operator std::string_view() const { return msg; }
   };
 
   using SPSC = SPSCQueueWithNotifer<SPSCQueue<Element>>;
   using ProducerLock = MutexLockWrap;
-  using Buffer = std::string;
+  template <size_t align> struct Buffer {
+    std::string data_;
+    char *start_;
+    size_t size_;
+    Buffer(size_t n) : size_(n) {
+      ASSERT_GT(n, 0);
+      data_.resize(n + align - 1);
+      start_ = ALIGN_UP_TO(data_.data(), align);
+    }
+    size_t size() const { return size_; }
+    char *start() {
+      __builtin_assume(U64(start_) % align == 0);
+      return start_;
+    };
+    Buffer(const Buffer &) = delete;
+  };
 
   size_t Consume(size_t consume_batch_cnt, const size_t consume_batch_size,
                  std::ostream &ostr = std::cout) {
-    std::array<char, utils::LogTimePointSize> buff;
+    std::array<char, utils::kLogTimePointSize> buff;
     auto res = RunWithMutexLock([&] {
       return ConsumeImpl(
           [&](Element &&msg) {
-            auto &&now = msg.time;
-            auto &&millisec =
-                duration_cast<Milliseconds>(now.time_since_epoch()).count() %
-                1000;
-            fmt::format_to_n(buff.data(), buff.size(),
-                             FMT_COMPILE(FMT_LOG_TIME_POINT), now, millisec);
+            utils::SerializeTimepoint(buff.data(), msg.time);
             for (std::string_view s{buff.data(), buff.size()}; !s.empty();) {
               if (full()) {
                 flush(ostr);
@@ -50,7 +62,7 @@ struct UniqAsyncLog : MutexLockWrap {
               put_buffer(s.substr(0, cp_size));
               s.remove_prefix(cp_size);
             }
-            for (std::string_view s = msg.msg; !s.empty();) {
+            for (std::string_view s = msg; !s.empty();) {
               if (full()) {
                 flush(ostr);
               }
@@ -93,22 +105,20 @@ struct UniqAsyncLog : MutexLockWrap {
     return flushed_bytes_.load(std::memory_order_relaxed);
   }
 
-  static constexpr size_t default_producer_cap = 512;
-  static constexpr size_t default_max_buff_size = 1024 * 4;
+  static constexpr size_t kDefaultProducerCap = 512;
+  static constexpr size_t kDefaultMaxBuffSize = 1024 * 4;
+  static constexpr size_t kDefaultBuffAlign = 1024 * 4;
 
-  UniqAsyncLog(size_t producer_cap = default_producer_cap,
-               size_t max_buff_size = default_max_buff_size,
+  UniqAsyncLog(size_t producer_cap = kDefaultProducerCap,
+               size_t max_buff_size = kDefaultMaxBuffSize,
                SystemClockType &&clock = SystemClockType{},
                SteadyClockType &&steady_clock = SteadyClockType{})
       : spsc_(producer_cap), system_clock_(std::move(clock)),
-        steady_clock_(std::move(steady_clock)) {
-    ASSERT_GT(max_buff_size, 0);
-    buffer_.resize(max_buff_size);
-  }
+        steady_clock_(std::move(steady_clock)), buffer_(max_buff_size) {}
 
   UniqAsyncLog(SystemClockType &&clock, SteadyClockType &&steady_clock)
-      : UniqAsyncLog(default_producer_cap, default_max_buff_size,
-                     std::move(clock), std::move(steady_clock)) {}
+      : UniqAsyncLog(kDefaultProducerCap, kDefaultMaxBuffSize, std::move(clock),
+                     std::move(steady_clock)) {}
 
   template <typename CustomerNotifer>
   void Add(Message &&msg, CustomerNotifer &&customer_notifier) const {
@@ -148,7 +158,7 @@ private:
   void flush(std::ostream &ostr) {
     if (empty())
       return;
-    ostr << std::string_view{begin(), size()};
+    ostr.write(begin(), size());
     ostr.flush();
     flushed_bytes_ += size();
     reset();
@@ -166,15 +176,15 @@ private:
   size_t size() const { return size_; }
   bool empty() const { return size() == 0; }
   size_t buff_remain_size() { return MaxBuffSize() - size(); }
-  char *begin() { return buffer_.data(); }
-  char *end() { return buffer_.data() + size(); }
+  char *begin() { return buffer_.start(); }
+  char *end() { return buffer_.start() + size(); }
   bool full() const { return size() == MaxBuffSize(); }
   void reset() { size_ = 0; }
 
 private:
   mutable ProducerLock producer_lock_;
   mutable SPSC spsc_;
-  mutable Buffer buffer_;
+  mutable Buffer<kDefaultBuffAlign> buffer_;
   size_t size_{};
   std::atomic<typename SteadyClockType::time_point> last_flush_time_{};
   std::atomic_uint64_t flushed_bytes_{};
@@ -199,6 +209,11 @@ struct AsyncLogFlushWorker final
     }
     void Put(typename Log::Message &&msg) {
       (*inner_).logger()->Add(std::move(msg), (*inner_));
+    }
+    void Flush(std::ostream &ostr) {
+      (*inner_).logger()->Consume(std::numeric_limits<uint32_t>::max(),
+                                  std::numeric_limits<uint32_t>::max(), ostr);
+      (*inner_).logger()->Flush(ostr);
     }
     std::shared_ptr<AsyncLogFlushWorker> inner_;
   };
@@ -291,6 +306,7 @@ struct AsyncLogger {
   using Self = AsyncLogger;
 
   void Put(Log::Message &&msg) { worker().Put(std::move(msg)); }
+  void Flush(std::ostream &ostr) { worker().Flush(ostr); }
 
   AsyncLogger(AsyncLogFlushWorker::Worker worker_) : worker_(worker_) {}
 
@@ -346,20 +362,20 @@ static void _test_async_log1() {
   std::stringstream ss;
   auto global_notifer = utils::Notifier{};
   auto async_log_notifier = AsyncLogNotifer{global_notifer};
-  utils::UniqAsyncLog<> logger{2, 4 + utils::LogTimePointSize};
+  utils::UniqAsyncLog<> logger{2, 4 + utils::kLogTimePointSize};
   {
     logger.Add("1", async_log_notifier);
     logger.Consume(1, 1, ss);
-    ASSERT_EQ(logger.Size(), 2 + utils::LogTimePointSize);
+    ASSERT_EQ(logger.Size(), 2 + utils::kLogTimePointSize);
     ASSERT_EQ(logger.RemainBuffeSize(), 2);
     logger.Flush(ss);
     auto s = ss.str();
-    ASSERT_EQ(std::string_view(s.data() + utils::LogTimePointSize, 1), "1");
+    ASSERT_EQ(std::string_view(s.data() + utils::kLogTimePointSize, 1), "1");
   }
   {
     logger.Add("2", async_log_notifier);
     logger.Consume(1, 1, ss);
-    ASSERT_EQ(logger.Size(), 2 + utils::LogTimePointSize);
+    ASSERT_EQ(logger.Size(), 2 + utils::kLogTimePointSize);
     ASSERT_EQ(logger.RemainBuffeSize(), 2);
   }
   {
@@ -368,7 +384,7 @@ static void _test_async_log1() {
     ASSERT_EQ(logger.Size(), 25);
     ASSERT_EQ(logger.RemainBuffeSize(), 4);
     logger.Flush(ss);
-    ASSERT_EQ((utils::LogTimePointSize + 2) * 3, ss.str().size());
+    ASSERT_EQ((utils::kLogTimePointSize + 2) * 3, ss.str().size());
   }
   { ss.str(""); }
   {
@@ -404,7 +420,7 @@ static void _test_async_log1() {
     });
     waiter.WakeAll();
     size_t expect_size =
-        async_runners.size() * (11 + 1 + utils::LogTimePointSize) * (loop_cnt);
+        async_runners.size() * (11 + 1 + utils::kLogTimePointSize) * (loop_cnt);
     for (;;) {
       bool stop = join_cnt == async_runners.size();
       if (const auto status =
@@ -492,7 +508,7 @@ static void _test_async_log2() {
     auto res = ss.str();
     ASSERT_EQ(flushed_size, res.size());
     size_t expect_size =
-        async_runners.size() * (11 + 1 + utils::LogTimePointSize) * (loop_cnt);
+        async_runners.size() * (11 + 1 + utils::kLogTimePointSize) * (loop_cnt);
     ASSERT_EQ(flushed_size, expect_size);
   }
 }

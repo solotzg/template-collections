@@ -4,18 +4,20 @@
 
 #define LOG_ASYNC_MODE 0
 
-std::atomic_uint64_t global_seq{};
-
 #if LOG_ASYNC_MODE
-static auto *logger = &utils::AsyncLogger::GlobalSTDOUT();
-#define LOG(...) ASYNC_LOG_INFO(logger, __VA_ARGS__)
+namespace {
+auto *s_logger = &utils::AsyncLogger::GlobalSTDOUT();
+}
+#define LOG(...) ASYNC_LOG_INFO(s_logger, __VA_ARGS__)
 #else
 #define LOG(...) LOG_INFO(__VA_ARGS__)
 #endif
+namespace {
+std::atomic_uint64_t s_global_seq{};
+}
 #define LOG_DEBUG_SEQ(fmt_str, ...)                                            \
   do {                                                                         \
-    auto &&__seq = ++global_seq;                                               \
-    LOG_INFO("({}. " fmt_str, __seq, __VA_ARGS__);                             \
+    LOG_INFO("({}. " fmt_str, ++s_global_seq, __VA_ARGS__);                    \
   } while (0)
 
 namespace example {
