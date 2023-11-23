@@ -2,6 +2,12 @@
 
 namespace bench {
 
+NO_INLINE static void inc(uint64_t &x) { x += 1; }
+
+struct TestLockNone {
+  template <typename F> inline auto RunWithLock(F &&f) const { return f(); }
+};
+
 template <typename LockType>
 static void bench_lock_impl(const size_t n, const size_t parallel,
                             std::string_view name) {
@@ -18,7 +24,7 @@ static void bench_lock_impl(const size_t n, const size_t parallel,
     threads.emplace_back([&] {
       waiter.Wait();
       rp(j, n) {
-        lock.RunWithLock([&] { x++; });
+        lock.RunWithLock([&] { inc(x); });
       }
       if (0 == (--r)) {
         waiter2.WakeOne();
@@ -35,7 +41,12 @@ static void bench_lock_impl(const size_t n, const size_t parallel,
   }
   for (auto &&t : threads)
     t.join();
-  RUNTIME_ASSERT(n * threads.size(), x);
+
+  if constexpr (std::is_same_v<TestLockNone, LockType>) {
+    RUNTIME_ASSERT_NE(n * threads.size(), x);
+  } else {
+    RUNTIME_ASSERT_EQ(n * threads.size(), x);
+  }
 }
 
 struct TestMutexLock : utils::MutexLockWrap {
@@ -57,15 +68,21 @@ static void bench_lock(int argc, char **argv) {
   auto &&fn_bench_spin = [&] {
     bench_lock_impl<utils::SpinLockWrap>(n, parallel, "SPIN");
   };
+  auto &&fn_bench_none = [&] {
+    bench_lock_impl<TestLockNone>(n, parallel, "NONE");
+  };
 
 #define M(name) fn_bench_##name();
   if (mode_str == "ALL") {
     M(mutex)
     M(spin)
+    M(none)
   } else if (mode_str == "MUTEX") {
     M(mutex)
   } else if (mode_str == "SPIN") {
     M(spin)
+  } else if (mode_str == "NONE") {
+    M(none)
   }
 #undef M
 }
