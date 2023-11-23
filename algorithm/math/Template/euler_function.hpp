@@ -2,7 +2,7 @@
 
 #include "utils/utils.h"
 
-struct EulerFunction : noncopyable {
+struct EulerFunction : utils::noncopyable {
   using Vec = std::vector<int>;
 
   EulerFunction(size_t maxn) { init(maxn); }
@@ -40,15 +40,3 @@ private:
   Vec phi_;
   Vec prime_;
 };
-
-#ifndef NDEBUG
-namespace tests {
-static void _test_euler_function() {
-  EulerFunction euler_function{20};
-  assert((euler_function.prime() == std::vector{2, 3, 5, 7, 11, 13, 17, 19}));
-  for (auto &&p : euler_function.prime()) {
-    ASSERT_EQ(euler_function.phi(p), p - 1);
-  }
-}
-} // namespace tests
-#endif

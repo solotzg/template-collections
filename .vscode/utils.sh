@@ -21,7 +21,7 @@ function get_core_num() {
 
 export -f get_core_num
 
-NAME=CPPTest
+NAME=CppTest
 WORKSPACE_FOLDER=${SRCPATH}
 DEBUG_BUILD_PATH=${WORKSPACE_FOLDER}/cmake-build-debug
 RELEASE_BUILD_PATH=${WORKSPACE_FOLDER}/cmake-build-release

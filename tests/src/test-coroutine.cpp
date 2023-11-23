@@ -1,3 +1,4 @@
+#include "tests/tests.h"
 #include "utils/async-log.hpp"
 #include <filesystem>
 #include <fstream>
@@ -20,7 +21,7 @@ std::atomic_uint64_t s_global_seq{};
     LOG_INFO("({}. " fmt_str, ++s_global_seq, __VA_ARGS__);                    \
   } while (0)
 
-namespace example {
+namespace tests_coro {
 
 using CoExecutor = utils::async::CoExecutor<utils::DelegateWheelTimer,
                                             utils::TaskPoolWorker::Worker>;
@@ -253,30 +254,24 @@ RootTask run() {
   ASSERT_EQ(a + b + c, 15);
 }
 
-} // namespace example
-
-#ifndef NDEBUG
-
-namespace tests {
-
-static void _test_coroutine() {
+static void _test_coroutine1() {
   utils::AsyncSteadyTaskRunner steady_task_runner(true);
   auto worker =
       steady_task_runner.AddTask(std::make_shared<utils::TaskPoolWorker>());
   CoExecutor executor(utils::DelegateWheelTimer::GlobalDelegateInstance(),
                       worker);
   LOG_DEBUG_SEQ("{}", "construct executor");
-  auto t = [](example::TestNode) -> example::TestCoRunner {
+  auto t = [](TestNode) -> TestCoRunner {
     SCOPE_EXIT({
       LOG_DEBUG_SEQ("{}",
                     "destroys all variables with automatic storage duration");
     });
     LOG_DEBUG_SEQ("{}", "begin to execute coroutine body");
     utils::async::ResumeAblePtr waiter = utils::async::ResumeAble::New();
-    co_await example::AsyncDelayTask{utils::Milliseconds{20}, waiter};
+    co_await AsyncDelayTask{utils::Milliseconds{20}, waiter};
     LOG_DEBUG_SEQ("{}", "coroutine resumed, continue execcute coroutine "
                         "body now");
-  }(example::TestNode{});
+  }(TestNode{});
   t.ViaExecutor(&executor);
   utils::async::BlockOn(executor);
 }
@@ -287,20 +282,16 @@ static void _test_coroutine2() {
       steady_task_runner.AddTask(std::make_shared<utils::TaskPoolWorker>());
   CoExecutor executor(utils::DelegateWheelTimer::GlobalDelegateInstance(),
                       worker);
-  auto t = example::run();
+  auto t = run();
   t.ViaExecutor(&executor);
   utils::async::BlockOn(executor);
 }
 
-} // namespace tests
-
-int main() {
-  tests::_test_coroutine();
-  tests::_test_coroutine2();
+static void _test_coroutine() {
+  _test_coroutine1();
+  _test_coroutine2();
 }
 
-#else
+} // namespace tests_coro
 
-int main() { return 0; }
-
-#endif
+FUNC_FACTORY_REGISTER("coroutine", tests_coro::_test_coroutine);

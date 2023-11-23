@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(CPPTest)
+project(CppTest)
 set(CMAKE_CXX_STANDARD 20)
 
 string(TOUPPER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE_UC)
@@ -57,10 +57,10 @@ if(ENABLE_PYBIND_UTILS)
   add_subdirectory(pybind_utils)
 endif()
 
-add_executable(CPPTest main.cpp)
-add_target_pch("${PROJECT_SOURCE_DIR}/utils/pch.h" CPPTest)
-target_include_directories(CPPTest PUBLIC ${PROJECT_SOURCE_DIR})
-target_link_libraries(CPPTest utils)
+add_executable(CppTest main.cpp)
+add_target_pch("${PROJECT_SOURCE_DIR}/utils/pch.h" CppTest)
+target_include_directories(CppTest PUBLIC ${PROJECT_SOURCE_DIR})
+target_link_libraries(CppTest utils)
 
 option(ENABLE_BENCHMARK "enable build benchmark" OFF)
 if(ENABLE_BENCHMARK)
@@ -68,7 +68,7 @@ if(ENABLE_BENCHMARK)
 endif()
 
 if(CMAKE_BUILD_TYPE_UC STREQUAL "DEBUG")
-  add_subdirectory(example)
+  add_subdirectory(tests)
 endif()
 
 print_flags()

@@ -50,19 +50,3 @@ template <typename T, int R, int C> struct Matrix {
     return bg.data_[0][0];
   }
 };
-
-#ifndef NDEBUG
-namespace tests {
-static void _test_matrix() {
-  constexpr uint64_t MOD = 1e9 + 7;
-  using M = Matrix<uint64_t, 2, 2>;
-  uint64_t a = 0, b = 1, n = 0;
-  for (; n < 1000; n++) {
-    ASSERT(a == M::Fibonacci<U128>(n, MOD));
-    auto c = (a + b) % MOD;
-    a = b;
-    b = c;
-  }
-}
-} // namespace tests
-#endif

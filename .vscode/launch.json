@@ -8,8 +8,18 @@
             "name": "Debug",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/cmake-build-debug/CPPTest",
+            "program": "${workspaceFolder}/cmake-build-debug/CppTest",
             "args": [],
+            "preLaunchTask": "build"
+        },
+        {
+            "name": "DebugTests",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/./cmake-build-debug/tests/tests",
+            "args": [
+                "all"
+            ],
             "preLaunchTask": "build"
         },
         {
