@@ -1,6 +1,6 @@
 set(BENCH_SRC bench.cpp)
 set(BENCH_SRC ${BENCH_SRC} bench_mpsc.cpp bench_timer.cpp bench_lock.cpp
-              bench_alloc.cpp)
+              bench_alloc.cpp bench_async_timepoint.cpp)
 
 if(OS_LINUX)
   set(BENCH_SRC ${BENCH_SRC} bench_async_log.cpp)

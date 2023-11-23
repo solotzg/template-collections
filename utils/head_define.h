@@ -16,6 +16,7 @@
 #define rev_repd(i, a, b) _rep_impl(i, a, b, >=, -=, 1)
 #define rev_rep(i, a, b) _rep_impl(i, a, b, >, -=, 1)
 #define bit_test(num, index) (((num) >> (index)) & 1)
+#define RESTRICT __restrict
 
 typedef long long LL;
 typedef unsigned long long ULL;

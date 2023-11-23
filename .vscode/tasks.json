@@ -211,6 +211,38 @@
             "problemMatcher": []
         },
         {
+            "label": "release_recompile_emmit_llvm",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/.vscode/recompile.py",
+                "--file",
+                "${file}",
+                "--type",
+                "build",
+                "--emmit-llvm",
+                "--work-dir",
+                "${workspaceFolder}/cmake-build-release"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "debug_recompile_emmit_llvm",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/.vscode/recompile.py",
+                "--file",
+                "${file}",
+                "--type",
+                "build",
+                "--emmit-llvm",
+                "--work-dir",
+                "${workspaceFolder}/cmake-build-debug"
+            ],
+            "problemMatcher": []
+        },
+        {
             "label": "iwyu",
             "type": "shell",
             "command": "iwyu_tool.py",

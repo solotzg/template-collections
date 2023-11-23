@@ -33,10 +33,9 @@ static void bench_async_log(int argc, char **argv) {
 
   auto fn_show_rate = [&](utils::TimeCost::Clock::duration dur) {
     double rate = 1.0 * n * (msg_size + 58) / 1024 / 1024 /
-                  std::chrono::duration_cast<utils::Milliseconds>(dur).count() *
-                  1000;
+                  utils::TimeCost::IntoDurationSec(dur);
 
-    FMSGLN("IO rate {:.3f} MB/s", rate);
+    FMSGLN("[IO rate: {:.3f} MB/s]", rate);
   };
 
   auto fn_bench_stl = [&]() {

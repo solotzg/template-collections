@@ -280,6 +280,7 @@ protected:
 
 struct TimeCost {
   using Clock = SteadyClock;
+  using Seconds = double;
   //
   TimeCost(std::string_view label = "ROOT", bool auto_show = true);
   ~TimeCost();
@@ -287,20 +288,14 @@ struct TimeCost {
   void Show(TimeCost::Clock::duration dur, const char *prefix = nullptr) const;
   void Reset();
   Clock::duration Duration();
+  Seconds DurationSec();
+  static Seconds IntoDurationSec(const TimeCost::Clock::duration);
 
 private:
   std::string_view label_;
   Clock::time_point start_;
   const bool auto_show_;
 };
-
-namespace variant_op {
-template <class... Ts> struct overloaded : Ts... {
-  using Ts::operator()...;
-};
-template <class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
-template <class T> struct always_false : std::false_type {};
-} // namespace variant_op
 
 void ShowBuildInfo(std::ostream &os);
 
@@ -367,12 +362,12 @@ std::string ToUpper(std::string_view s);
 void ToLower(std::string &s);
 std::string ToLower(std::string_view s);
 
+const char *ThreadLocalSerializeTimepoint(const SystemClock::time_point ts);
+
 ALWAYS_INLINE void SerializeTimepoint(char *p,
                                       const SystemClock::time_point ts) {
-  auto &&millisec =
-      duration_cast<Milliseconds>(ts.time_since_epoch()).count() % 1000;
-  fmt::format_to_n(p, utils::kLogTimePointSize, FMT_COMPILE(FMT_LOG_TIMEPOINT),
-                   ts, millisec);
+  auto *src = ThreadLocalSerializeTimepoint(ts);
+  std::memcpy(p, src, utils::kLogTimePointSize);
 }
 
 struct STDCoutGuard {
@@ -431,27 +426,28 @@ private:
   T *data_{};
 };
 
-template <typename T> struct FastBin : noncopyable {
-  static constexpr size_t MAX_PAGE_SIZE = 64 * 1024;
+template <size_t SIZEOF_OBJ, size_t ALIGNOF_OBJ,
+          size_t MAX_PAGE_SIZE = 64 * 1024>
+struct FastBinBase : noncopyable {
   static constexpr size_t ADDR_SIZE = sizeof(void *);
   static constexpr size_t ADDR_ALIGN = alignof(void *);
 
   static constexpr size_t OBJ_SIZE =
-      (sizeof(T) + ADDR_ALIGN - 1) / ADDR_ALIGN * ADDR_ALIGN;
+      (SIZEOF_OBJ + ADDR_ALIGN - 1) / ADDR_ALIGN * ADDR_ALIGN;
   static constexpr size_t OBJ_ALIGN =
-      (alignof(T) + ADDR_ALIGN - 1) / ADDR_ALIGN * ADDR_ALIGN;
+      (ALIGNOF_OBJ + ADDR_ALIGN - 1) / ADDR_ALIGN * ADDR_ALIGN;
 
-  FastBin() {
+  FastBinBase() {
     const size_t require = OBJ_SIZE * 32 + ADDR_SIZE + OBJ_ALIGN;
-    for (page_size_ = 32; page_size_ < require;) {
-      page_size_ *= 2;
+    for (next_alloc_page_size_ = 32; next_alloc_page_size_ < require;) {
+      next_alloc_page_size_ *= 2;
     }
   }
 
-  ~FastBin() {
+  ~FastBinBase() {
     while (pages_) {
       void *page = pages_;
-      void *next = calc_next(page);
+      void *next = next_addr_of(page);
       pages_ = next;
       free(page);
     }
@@ -460,20 +456,20 @@ template <typename T> struct FastBin : noncopyable {
   void *Alloc() {
     void *obj = next_;
     if (obj) {
-      next_ = calc_next(obj);
+      next_ = next_addr_of(obj);
       return obj;
     }
     if (start_ + OBJ_SIZE > endup_) {
-      char *page = (char *)(malloc(page_size_));
-      calc_next(page) = pages_;
+      auto *page = malloc(next_alloc_page_size_);
+      next_addr_of(page) = pages_;
       pages_ = page;
 
-      size_t lineptr =
+      size_t first_obj_ptr =
           ((size_t)(page) + ADDR_SIZE + OBJ_ALIGN - 1) / OBJ_ALIGN * OBJ_ALIGN;
-      start_ = (char *)(lineptr);
-      endup_ = page + page_size_;
-      if (page_size_ < MAX_PAGE_SIZE) {
-        page_size_ *= 2;
+      start_ = (char *)(first_obj_ptr);
+      endup_ = (char *)(page) + next_alloc_page_size_;
+      if (next_alloc_page_size_ < MAX_PAGE_SIZE) {
+        next_alloc_page_size_ *= 2;
       }
     }
     obj = start_;
@@ -483,19 +479,23 @@ template <typename T> struct FastBin : noncopyable {
   }
 
   void Dealloc(void *ptr) {
-    calc_next(ptr) = next_;
+    next_addr_of(ptr) = next_;
     next_ = ptr;
   }
 
 protected:
-  static void *&calc_next(void *ptr) { return (((void **)(ptr))[0]); }
+  static void *&next_addr_of(void *ptr) { return (((void **)(ptr))[0]); }
 
 protected:
-  size_t page_size_;
+  size_t next_alloc_page_size_;
   char *start_{};
   char *endup_{};
   void *next_{};
   void *pages_{};
+};
+
+template <typename T> struct FastBin : FastBinBase<sizeof(T), alignof(T)> {
+  using ObjectType = T;
 };
 
 struct SpinLockWrap {
@@ -564,6 +564,110 @@ protected:
 
 protected:
   mutable CPUCacheLineAligned<std::atomic_bool> lock_;
+};
+
+template <typename T, bool enable> struct ConsistencyChecker {
+  ConsistencyChecker() { inc(); }
+  ~ConsistencyChecker() { dec(); }
+
+private:
+  struct Holder : utils::noncopyable {
+    ~Holder() { RUNTIME_ASSERT_EQ(obj_cnt_, 0); }
+    Holder() = default;
+    std::atomic_int64_t obj_cnt_{};
+  };
+
+private:
+  void inc() { ++obj_cnt(); }
+  void dec() { --obj_cnt(); }
+  static std::atomic_int64_t &obj_cnt() {
+    static Holder s_holder;
+    return s_holder.obj_cnt_;
+  };
+};
+
+template <typename T> struct ConsistencyChecker<T, false> {};
+
+template <typename T> struct SharedObject : utils::noncopyable {
+  using TargetType = T;
+  template <typename... Args>
+  SharedObject(Args &&...args) : obj_(std::forward<Args>(args)...) {
+    ++ref_cnt_;
+  }
+  TargetType *operator->() { return &obj_; }
+  const TargetType *operator->() const { return &obj_; }
+
+  std::atomic_int64_t &ref_cnt() { return ref_cnt_; }
+  const std::atomic_int64_t &ref_cnt() const { return ref_cnt_; }
+
+private:
+  T obj_;
+  std::atomic_int64_t ref_cnt_{};
+};
+
+template <typename Allocator> struct SharedObjectPtr {
+  using Object = typename Allocator::ObjectType;
+  using TargetType = typename Object::TargetType;
+
+  template <typename... Args>
+  static SharedObjectPtr New(Allocator &allocator, Args &&...args) {
+    auto *p = reinterpret_cast<Object *>(allocator.Alloc());
+    new (p) Object(std::forward<Args>(args)...);
+    ASSERT(p->ref_cnt() == 1);
+    return SharedObjectPtr(p, allocator);
+  }
+
+  SharedObjectPtr(const SharedObjectPtr &src)
+      : ptr_(src.ptr_), allocator_(src.allocator_) {
+    if (ptr_)
+      ptr_->ref_cnt()++;
+  }
+  SharedObjectPtr(SharedObjectPtr &&src)
+      : ptr_(std::exchange(src.ptr_, nullptr)), allocator_(src.allocator_) {}
+
+  SharedObjectPtr &operator=(const SharedObjectPtr &src) {
+    Reset();
+    ptr_ = src.ptr_;
+    allocator_ = src.allocator_;
+
+    if (ptr_)
+      ptr_->ref_cnt()++;
+    return *this;
+  }
+  SharedObjectPtr &operator=(SharedObjectPtr &&src) {
+    Reset();
+    ptr_ = std::exchange(src.ptr_, nullptr);
+    allocator_ = src.allocator_;
+    return *this;
+  }
+
+  SharedObjectPtr(std::nullptr_t) : ptr_(nullptr) {}
+
+  TargetType *operator->() { return (*ptr_).operator->(); }
+  const TargetType *operator->() const { return (*ptr_).operator->(); }
+
+  ~SharedObjectPtr() { Reset(); }
+  SharedObjectPtr() = default;
+
+private:
+  void Reset() {
+    if (!ptr_)
+      return;
+    if (auto n = --ptr_->ref_cnt(); !n) {
+      ptr_->~Object();
+      allocator().Dealloc(ptr_);
+      ptr_ = nullptr;
+    }
+  }
+
+  SharedObjectPtr(Object *ptr, Allocator &allocator)
+      : ptr_(ptr), allocator_(&allocator) {}
+
+  Allocator &allocator() { return *allocator_; }
+
+private:
+  Object *ptr_{};
+  Allocator *allocator_{};
 };
 
 } // namespace utils

@@ -25,6 +25,9 @@ class Runner:
             '--clang-tidy-path', help='clang-tidy path',)
         parser.add_argument(
             '--release-build', help='use release build compile flags', action="store_true")
+        parser.add_argument(
+            '--emmit-llvm', help='emmit llvm information', action='store_true')
+
         self.args = parser.parse_args()
         self.work_dir = self.args.work_dir
         os.chdir(self.work_dir)
@@ -106,6 +109,8 @@ class Runner:
             suffix += ' -ftime-trace'
         if preprocess:
             suffix += ' -E'
+        if self.args.emmit_llvm:
+            suffix += ' -emmit-llvm -S'
 
         cmd: str = self.find_compile_block(self.args.file).get("command")
 

@@ -49,12 +49,13 @@ struct UniqAsyncLog : MutexLockWrap {
 
   size_t Consume(size_t consume_batch_cnt, const size_t consume_batch_size,
                  std::ostream &ostr = std::cout) {
-    std::array<char, utils::kLogTimePointSize> buff;
     auto res = RunWithMutexLock([&] {
       return ConsumeImpl(
           [&](Element &&msg) {
-            utils::SerializeTimepoint(buff.data(), msg.time);
-            for (std::string_view s{buff.data(), buff.size()}; !s.empty();) {
+            std::string_view buff(
+                utils::ThreadLocalSerializeTimepoint(msg.time),
+                utils::kLogTimePointSize);
+            for (std::string_view s = buff; !s.empty();) {
               if (full()) {
                 flush(ostr);
               }
