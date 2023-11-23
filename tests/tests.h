@@ -1,5 +1,7 @@
 #pragma once
 
+#include "utils/utils.h"
+
 namespace tests {
 
 struct FuncFactory : utils::MutexLockWrap {
@@ -21,6 +23,25 @@ protected:
 };
 
 } // namespace tests
+
+namespace {
+
+template <typename T>
+struct TestNode : utils::ConsistencyChecker<>, utils::noncopyable {
+  template <typename... Args>
+  TestNode(Args &&...args) : value_(std::forward<Args>(args)...) {}
+  TestNode(TestNode &&src) : value_(std::move(src.value_)) {}
+  TestNode &operator=(TestNode &&src) {
+    value_ = std::move(src.value_);
+    return *this;
+  }
+  T &value() { return value_; }
+  const T &value() const { return value_; }
+
+private:
+  T value_;
+};
+} // namespace
 
 #define FUNC_FACTORY_REGISTER(name, func)                                      \
   namespace {                                                                  \

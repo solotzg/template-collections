@@ -2,29 +2,6 @@
 #include "utils/mpsc.hpp"
 
 namespace bench {
-template <typename T> struct TestNode {
-  TestNode(const TestNode &) = delete;
-  TestNode(T &&val) : val_(std::move(val)) { inc_cnt(); }
-  ~TestNode() { dec_cnt(); }
-  TestNode(TestNode &&src) {
-    inc_cnt();
-    val_ = std::move(src.val_);
-  }
-  TestNode &operator=(TestNode &&src) {
-    inc_cnt();
-    val_ = std::move(src.val_);
-    return *this;
-  }
-  static std::atomic_uint64_t &test_node_cnt() {
-    static std::atomic_uint64_t data{};
-    return data;
-  }
-  static void inc_cnt() { test_node_cnt()++; }
-  static void dec_cnt() { test_node_cnt()--; }
-  operator T() { return val_; }
-
-  T val_{};
-};
 
 using BenchElementType = int;
 using BenchNode =

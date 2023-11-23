@@ -9,6 +9,8 @@ namespace utils {
 
 static constexpr Milliseconds MaxDuration = Seconds{72 * 3600}; // 72 hours
 
+constexpr char CRLF = '\n';
+
 struct AtomicNotifier;
 using AtomicNotifierPtr = std::shared_ptr<AtomicNotifier>;
 
@@ -566,9 +568,10 @@ protected:
   mutable CPUCacheLineAligned<std::atomic_bool> lock_;
 };
 
-template <typename T, bool enable> struct ConsistencyChecker {
+template <bool enable = true> struct ConsistencyChecker {
   ConsistencyChecker() { inc(); }
   ~ConsistencyChecker() { dec(); }
+  static I64 obj_cnt() { return global_obj_cnt(); }
 
 private:
   struct Holder : utils::noncopyable {
@@ -578,31 +581,37 @@ private:
   };
 
 private:
-  void inc() { ++obj_cnt(); }
-  void dec() { --obj_cnt(); }
-  static std::atomic_int64_t &obj_cnt() {
+  void inc() { ++global_obj_cnt(); }
+  void dec() { --global_obj_cnt(); }
+  static std::atomic_int64_t &global_obj_cnt() {
     static Holder s_holder;
     return s_holder.obj_cnt_;
   };
 };
 
-template <typename T> struct ConsistencyChecker<T, false> {};
+template <> struct ConsistencyChecker<false> {};
+
+template <typename Allocator> struct SharedObjectPtr;
 
 template <typename T> struct SharedObject : utils::noncopyable {
   using TargetType = T;
+
   template <typename... Args>
-  SharedObject(Args &&...args) : obj_(std::forward<Args>(args)...) {
-    ++ref_cnt_;
+  SharedObject(void *allocator, Args &&...args)
+      : allocator_(allocator), obj_(std::forward<Args>(args)...) {
+    ASSERT(allocator_);
   }
   TargetType *operator->() { return &obj_; }
   const TargetType *operator->() const { return &obj_; }
 
   std::atomic_int64_t &ref_cnt() { return ref_cnt_; }
   const std::atomic_int64_t &ref_cnt() const { return ref_cnt_; }
+  void *allocator() const { return allocator_; };
 
 private:
+  void *allocator_{};
+  std::atomic_int64_t ref_cnt_{1};
   T obj_;
-  std::atomic_int64_t ref_cnt_{};
 };
 
 template <typename Allocator> struct SharedObjectPtr {
@@ -612,23 +621,21 @@ template <typename Allocator> struct SharedObjectPtr {
   template <typename... Args>
   static SharedObjectPtr New(Allocator &allocator, Args &&...args) {
     auto *p = reinterpret_cast<Object *>(allocator.Alloc());
-    new (p) Object(std::forward<Args>(args)...);
+    new (p) Object(&allocator, std::forward<Args>(args)...);
     ASSERT(p->ref_cnt() == 1);
-    return SharedObjectPtr(p, allocator);
+    return SharedObjectPtr(p);
   }
 
-  SharedObjectPtr(const SharedObjectPtr &src)
-      : ptr_(src.ptr_), allocator_(src.allocator_) {
+  SharedObjectPtr(const SharedObjectPtr &src) : ptr_(src.ptr_) {
     if (ptr_)
       ptr_->ref_cnt()++;
   }
   SharedObjectPtr(SharedObjectPtr &&src)
-      : ptr_(std::exchange(src.ptr_, nullptr)), allocator_(src.allocator_) {}
+      : ptr_(std::exchange(src.ptr_, nullptr)) {}
 
   SharedObjectPtr &operator=(const SharedObjectPtr &src) {
     Reset();
     ptr_ = src.ptr_;
-    allocator_ = src.allocator_;
 
     if (ptr_)
       ptr_->ref_cnt()++;
@@ -637,7 +644,6 @@ template <typename Allocator> struct SharedObjectPtr {
   SharedObjectPtr &operator=(SharedObjectPtr &&src) {
     Reset();
     ptr_ = std::exchange(src.ptr_, nullptr);
-    allocator_ = src.allocator_;
     return *this;
   }
 
@@ -654,20 +660,17 @@ private:
     if (!ptr_)
       return;
     if (auto n = --ptr_->ref_cnt(); !n) {
+      auto *allocator_ = (Allocator *)(ptr_->allocator());
       ptr_->~Object();
-      allocator().Dealloc(ptr_);
+      allocator_->Dealloc(ptr_);
       ptr_ = nullptr;
     }
   }
 
-  SharedObjectPtr(Object *ptr, Allocator &allocator)
-      : ptr_(ptr), allocator_(&allocator) {}
-
-  Allocator &allocator() { return *allocator_; }
+  SharedObjectPtr(Object *ptr) : ptr_(ptr) {}
 
 private:
   Object *ptr_{};
-  Allocator *allocator_{};
 };
 
 } // namespace utils

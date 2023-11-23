@@ -67,8 +67,12 @@ void ToLower(std::string &s) {
   }
 }
 
-void STDCoutGuard::Print(std::string_view s) {
-  lock_.RunWithMutexLock([&] { std::cout << s << std::endl; });
+void STDCoutGuard::Print(std::string_view str) {
+  lock_.RunWithMutexLock([&] {
+    std::cout.write(str.data(), str.size());
+    std::cout.put(CRLF);
+  });
+  std::cout.flush();
 }
 
 const char *
@@ -111,8 +115,11 @@ void STDCoutGuard::PrintWithTimepointPrefix(std::string_view str) {
   lock_.RunWithMutexLock([&] {
     auto &&now = SystemClock::now();
     auto buff = ThreadLocalSerializeTimepoint(now);
-    std::cout << std::string_view{buff, kLogTimePointSize} << str << std::endl;
+    std::cout.write(buff, kLogTimePointSize);
+    std::cout.write(str.data(), str.size());
+    std::cout.put(CRLF);
   });
+  std::cout.flush();
 }
 
 MutexLockWrap STDCoutGuard::lock_{};

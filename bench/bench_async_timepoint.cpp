@@ -10,7 +10,8 @@ constexpr bool kCheckConsistency = false;
 
 namespace {
 
-struct TestNode : utils::ConsistencyChecker<TestNode, kCheckConsistency> {
+struct TestNode : utils::ConsistencyChecker<kCheckConsistency>,
+                  utils::noncopyable {
   std::array<char, utils::kLogTimePointSize> buff_;
 };
 

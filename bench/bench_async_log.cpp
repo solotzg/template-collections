@@ -4,6 +4,9 @@
 namespace {
 
 NO_INLINE void run_stl(std::string_view msg) { LOG_INFO(msg); }
+NO_INLINE void run_raw(std::string_view msg) {
+  utils::STDCoutGuard::Print(msg);
+}
 NO_INLINE void run_async(utils::AsyncLogger *logger, std::string_view msg) {
   ASYNC_LOG_INFO(logger, msg);
 }
@@ -25,7 +28,12 @@ RunWithCoutNull(F &&f, std::string_view label) {
 }
 
 static void bench_async_log(int argc, char **argv) {
+#ifdef NDEBUG
   const size_t n = 1e7;
+#else
+  const size_t n = 100;
+#endif
+
   const size_t msg_size = 128;
 
   std::string mode_str = argc > 0 ? utils::ToUpper(argv[0]) : "ALL";
@@ -47,6 +55,17 @@ static void bench_async_log(int argc, char **argv) {
     fn_show_rate(dur);
   };
 
+  auto fn_bench_raw = [&]() {
+    auto *p = __builtin_return_address(0);
+    auto *ptr = (char *)((size_t)(p) / 4096 * 4096);
+    auto dur = RunWithCoutNull(
+        [&] {
+          rp(i, n) { run_raw({ptr, msg_size + 58}); }
+        },
+        "raw");
+    fn_show_rate(dur);
+  };
+
   auto fn_bench_async = [&]() {
     auto dur = RunWithCoutNull(
         [&] {
@@ -62,10 +81,15 @@ static void bench_async_log(int argc, char **argv) {
   if (mode_str == "ALL") {
     fn_bench_stl();
     fn_bench_async();
+    fn_bench_raw();
   } else if (mode_str == "ASYNC") {
     fn_bench_async();
   } else if (mode_str == "STL") {
     fn_bench_stl();
+  } else if (mode_str == "RAW") {
+    fn_bench_raw();
+  } else {
+    PANIC("Unknown mode", mode_str);
   }
 }
 

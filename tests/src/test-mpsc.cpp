@@ -1,4 +1,3 @@
-#include "spsc-utils.h"
 #include "tests/tests.h"
 #include "utils/mpsc.hpp"
 
@@ -15,9 +14,11 @@ namespace tests {
 static auto &&func_nothing1 = [](size_t) {};
 static auto &&func_nothing2 = []() {};
 
+using TestNode = TestNode<int>;
+
 static void _test_mpsc_with_notifer() {
   {
-    ASSERT_EQ(TestNode::test_node_cnt(), 0);
+    ASSERT_EQ(TestNode::obj_cnt(), 0);
     size_t producer_size = 2;
     utils::Notifier notifier{};
     auto s = utils::MPSCQueueWithNotifer<
@@ -38,7 +39,7 @@ static void _test_mpsc_with_notifer() {
     });
     auto res = 0, cnt = 0;
     for (;;) {
-      auto x = s.Get([&](TestNode &&t, size_t) { res += t.v; },
+      auto x = s.Get([&](TestNode &&t, size_t) { res += t.value(); },
                      [&](size_t empty_producer_index) {
                        s.WakeProducer(empty_producer_index);
                      },
@@ -52,7 +53,7 @@ static void _test_mpsc_with_notifer() {
     }
     t1.join();
     t2.join();
-    ASSERT_EQ(TestNode::test_node_cnt(), 0);
+    ASSERT_EQ(TestNode::obj_cnt(), 0);
   }
   {
     utils::Notifier notifier;
@@ -138,23 +139,23 @@ static void _test_mpsc_fast_bin_alloc() {
     size_t k = 0;
     mpsc.Consume(
         [&](TestNode &x) {
-          RUNTIME_ASSERT_EQ(k, x.v);
+          RUNTIME_ASSERT_EQ(k, x.value());
           ++k;
         },
         5);
     RUNTIME_ASSERT(!mpsc.IsFull());
     RUNTIME_ASSERT(mpsc.size());
-    RUNTIME_ASSERT_EQ(TestNode::test_node_cnt(), 5);
+    RUNTIME_ASSERT_EQ(TestNode::obj_cnt(), 5);
     mpsc.Consume(
         [&](TestNode &x) {
-          RUNTIME_ASSERT_EQ(k, x.v);
+          RUNTIME_ASSERT_EQ(k, x.value());
           ++k;
         },
         5);
     RUNTIME_ASSERT(!mpsc.size());
     RUNTIME_ASSERT(!mpsc.IsFull());
     mpsc.Consume([](auto &&) { PANIC(__PRETTY_FUNCTION__); });
-    RUNTIME_ASSERT_EQ(TestNode::test_node_cnt(), 0);
+    RUNTIME_ASSERT_EQ(TestNode::obj_cnt(), 0);
   }
 
   {
@@ -175,7 +176,7 @@ static void _test_mpsc_fast_bin_alloc() {
     size_t expect_res = threads.size() * (test_loop - 1) * test_loop / 2;
     size_t res_sum = 0;
     for (size_t total = 0;;) {
-      auto cnt = mpsc.Consume([&](auto &&e) { res_sum += e.v; }, 5);
+      auto cnt = mpsc.Consume([&](auto &&e) { res_sum += e.value(); }, 5);
       total += cnt;
       if (total == threads.size() * test_loop) {
         break;
@@ -185,7 +186,7 @@ static void _test_mpsc_fast_bin_alloc() {
       t.join();
     mpsc.Consume([](auto &&) { PANIC(__PRETTY_FUNCTION__); });
     ASSERT_EQ(expect_res, res_sum);
-    RUNTIME_ASSERT_EQ(TestNode::test_node_cnt(), 0);
+    RUNTIME_ASSERT_EQ(TestNode::obj_cnt(), 0);
   }
 }
 

@@ -166,7 +166,6 @@ private:
     last_flush_time_ = steady_clock_.now();
   }
   void put_buffer(std::string_view s) {
-
     std::memcpy(end(), s.data(), s.size());
     size_ += s.size();
   }

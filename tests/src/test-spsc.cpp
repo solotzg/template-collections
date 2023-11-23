@@ -1,8 +1,9 @@
-#include "spsc-utils.h"
 #include "tests/tests.h"
 #include "utils/spsc_queue.hpp"
 
 namespace tests {
+
+using TestNode = TestNode<int>;
 
 static void _test_spsc_queue() {
   {
@@ -65,9 +66,9 @@ static void _test_spsc_queue() {
   {
     {
       TestNode _{1};
-      assert(TestNode::test_node_cnt() == 1);
+      assert(TestNode::obj_cnt() == 1);
     }
-    ASSERT_EQ(TestNode::test_node_cnt(), 0);
+    ASSERT_EQ(TestNode::obj_cnt(), 0);
     {
       utils::SPSCQueue<TestNode> s(3);
       auto producer = s.GenProducer();
@@ -76,11 +77,11 @@ static void _test_spsc_queue() {
       producer.Put(TestNode{2});
       producer.Put(TestNode{3});
       producer.Put(TestNode{4});
-      assert(TestNode::test_node_cnt() == 3);
+      assert(TestNode::obj_cnt() == 3);
       customer.Get();
-      assert(TestNode::test_node_cnt() == 2);
+      assert(TestNode::obj_cnt() == 2);
     }
-    ASSERT_EQ(TestNode::test_node_cnt(), 0);
+    ASSERT_EQ(TestNode::obj_cnt(), 0);
 
     {
       utils::SPSCQueue<TestNode> s(3);
@@ -97,14 +98,14 @@ static void _test_spsc_queue() {
         while (1) {
           auto v = customer.Get();
           if (v) {
-            assert(v->v == i + 1);
+            assert(v->value() == i + 1);
             break;
           } else
             std::this_thread::yield();
         }
       }
       t1.join();
-      ASSERT_EQ(TestNode::test_node_cnt(), 0);
+      ASSERT_EQ(TestNode::obj_cnt(), 0);
     }
 
     {
@@ -123,11 +124,11 @@ static void _test_spsc_queue() {
         auto v = s.Get(utils::Seconds{8192}, customer_notifier,
                        [&] { s.WakeProducer(); });
         ASSERT(v);
-        ASSERT_EQ(v->v, i + 1);
+        ASSERT_EQ(v->value(), i + 1);
         s.WakeProducer();
       }
       t1.join();
-      ASSERT_EQ(TestNode::test_node_cnt(), 0);
+      ASSERT_EQ(TestNode::obj_cnt(), 0);
     }
   }
 }
@@ -137,7 +138,8 @@ template <>
 struct fmt::formatter<tests::TestNode> : fmt::formatter<std::string> {
   template <typename FormatCtx>
   auto format(const tests::TestNode &a, FormatCtx &ctx) const {
-    return fmt::formatter<std::string>::format(fmt::format("{}", a.v), ctx);
+    return fmt::formatter<std::string>::format(fmt::format("{}", a.value()),
+                                               ctx);
   }
 };
 
