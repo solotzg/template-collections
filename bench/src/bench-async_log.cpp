@@ -1,5 +1,6 @@
 #include "bench/bench.h"
 #include "utils/async-log.hpp"
+#include <cstdio>
 
 namespace {
 
@@ -29,7 +30,7 @@ RunWithCoutNull(F &&f, std::string_view label) {
 
 static void bench_async_log(int argc, char **argv) {
 #ifdef NDEBUG
-  const size_t n = 1e7;
+  const size_t n = 1e3;
 #else
   const size_t n = 100;
 #endif

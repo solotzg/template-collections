@@ -1,7 +1,7 @@
 set(TESTS_SRC tests.cpp)
 file(GLOB _TESTS_SRC "src/test-*.cpp")
-message(STATUS "Using tests source files: ${_TESTS_SRC}")
 set(TESTS_SRC ${TESTS_SRC} ${_TESTS_SRC})
+message(STATUS "Using tests source files: ${TESTS_SRC}")
 
 add_executable(tests ${TESTS_SRC})
 add_target_pch("${PROJECT_SOURCE_DIR}/tests/pch.h" tests)
