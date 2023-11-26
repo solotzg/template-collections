@@ -21,30 +21,31 @@ struct AsyncLogNotifer : utils::AtomicNotifierWap {
 
 static void _test_async_log1() {
   std::stringstream ss;
+  auto &&fn_write_ss = [&](const char *p, const size_t n) { ss.write(p, n); };
   auto global_notifer = utils::Notifier{};
   auto async_log_notifier = AsyncLogNotifer{global_notifer};
   utils::UniqAsyncLog<> logger{2, 4 + utils::kLogTimePointSize};
   {
     logger.Add("1", async_log_notifier);
-    logger.Consume(1, 1, ss);
+    logger.Consume(1, 1, fn_write_ss);
     ASSERT_EQ(logger.Size(), 2 + utils::kLogTimePointSize);
     ASSERT_EQ(logger.RemainBuffeSize(), 2);
-    logger.Flush(ss);
+    logger.Flush(fn_write_ss);
     auto s = ss.str();
     ASSERT_EQ(std::string_view(s.data() + utils::kLogTimePointSize, 1), "1");
   }
   {
     logger.Add("2", async_log_notifier);
-    logger.Consume(1, 1, ss);
+    logger.Consume(1, 1, fn_write_ss);
     ASSERT_EQ(logger.Size(), 2 + utils::kLogTimePointSize);
     ASSERT_EQ(logger.RemainBuffeSize(), 2);
   }
   {
     logger.Add("3", async_log_notifier);
-    logger.Consume(1, 1, ss);
+    logger.Consume(1, 1, fn_write_ss);
     ASSERT_EQ(logger.Size(), 25);
     ASSERT_EQ(logger.RemainBuffeSize(), 4);
-    logger.Flush(ss);
+    logger.Flush(fn_write_ss);
     ASSERT_EQ((utils::kLogTimePointSize + 2) * 3, ss.str().size());
   }
   { ss.str(""); }
@@ -58,8 +59,8 @@ static void _test_async_log1() {
     ASSERT(!async_log_notifier.IsAwake());
     logger.Add("x", async_log_notifier);
     async_log_notifier.BlockedWait();
-    logger.Consume(1, 1, ss);
-    logger.Flush(ss);
+    logger.Consume(1, 1, fn_write_ss);
+    logger.Flush(fn_write_ss);
   }
   {
     ss.clear();
@@ -73,7 +74,7 @@ static void _test_async_log1() {
     rp(i, thread_cnt) async_runners.emplace_back([&, i, loop_cnt] {
       waiter.Wait();
       rp(j, loop_cnt) {
-        auto &&s = fmt::format(FMT_COMPILE("{:05d}:{:05d}"), i, j);
+        auto &&s = fmt::format(("{:05d}:{:05d}"), i, j);
         logger.Add(std::move(s), async_log_notifier);
       }
       join_cnt++;
@@ -89,18 +90,18 @@ static void _test_async_log1() {
           status == utils::Notifier::Status::Normal) {
         if (async_log_notifier.IsAwake()) {
           async_log_notifier.BlockedWait();
-          logger.Consume(std::numeric_limits<uint32_t>::max(), 2, ss);
+          logger.Consume(std::numeric_limits<uint32_t>::max(), 2, fn_write_ss);
         }
       }
       if (logger.NeedFlush(utils::Milliseconds{50})) {
-        logger.Flush(ss);
+        logger.Flush(fn_write_ss);
       }
       if (stop)
         break;
     }
     for (auto &&t : async_runners)
       t.join();
-    logger.Flush(ss);
+    logger.Flush(fn_write_ss);
     auto flushed_size = logger.FlushedSize() - ori_size;
     auto res = ss.str();
     ASSERT_EQ(flushed_size, res.size());
@@ -109,8 +110,15 @@ static void _test_async_log1() {
 }
 
 static void _test_async_log2() {
-  std::stringstream ss;
-  utils::UniqAsyncLog<> logger{2, 4096};
+  struct StringstreamWriter : std::stringstream {
+    using Base = std::stringstream;
+    using Base::Base;
+
+    void Write(const char *p, const size_t n) { (*this).write(p, n); }
+  };
+  using AsyncLogger = utils::UniqAsyncLog<>;
+  StringstreamWriter ss{};
+  AsyncLogger logger{2, 4096};
   {
     ss.clear();
     ss.str("");
@@ -120,7 +128,8 @@ static void _test_async_log2() {
     auto task_pool = std::make_shared<utils::TaskPoolWorker>();
 
     auto log_flush =
-        utils::AsyncLogFlushWorker<utils::UniqAsyncLog<>>::New(&logger, ss);
+        utils::AsyncLogFlushWorker<AsyncLogger *, StringstreamWriter *>::New(
+            &logger, &ss);
 
     utils::Timer timer;
     timer.AsyncRun();
@@ -149,7 +158,7 @@ static void _test_async_log2() {
     rp(i, async_runner_cnt) async_runners.emplace_back([&, i, loop_cnt] {
       waiter.Wait();
       rp(j, loop_cnt) {
-        auto &&s = fmt::format(FMT_COMPILE("{:05d}:{:05d}"), i, j);
+        auto &&s = fmt::format(("{:05d}:{:05d}"), i, j);
         logger.Add(std::move(s), *log_flush);
       }
       join_cnt++;

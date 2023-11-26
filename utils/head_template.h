@@ -15,6 +15,8 @@ using Microseconds = std::chrono::microseconds;
 using Milliseconds = std::chrono::milliseconds;
 using Seconds = std::chrono::seconds;
 
+using SysSeconds = std::chrono::sys_seconds;
+
 template <typename T, typename UP> struct OperatorWithModulo {
   static inline T mul_mod(T a, T b, T mod) {
     if constexpr (sizeof(T) < sizeof(UP)) {

@@ -22,6 +22,15 @@ protected:
   std::unordered_map<std::string, Func> data_;
 };
 
+inline auto DurAvgAndOps(const utils::TimeCost::Clock::duration &dur,
+                         double n) {
+  auto &&avg = dur / n;
+  auto &&ops = utils::Seconds{1} / avg;
+  return std::make_pair(avg, ops);
+}
+
+void ShowDurAvgAndOps(const utils::TimeCost::Clock::duration &dur, U64 n);
+
 } // namespace bench
 
 #define FUNC_FACTORY_REGISTER(name, func)                                      \

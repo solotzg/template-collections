@@ -31,24 +31,24 @@ struct UniqAsyncLog : MutexLockWrap {
   using SPSC = SPSCQueueWithNotifer<SPSCQueue<Element>>;
   using ProducerLock = MutexLockWrap;
   template <size_t align> struct Buffer {
-    std::string data_;
-    char *start_;
+    char *data_{};
     size_t size_;
     Buffer(size_t n) : size_(n) {
       ASSERT_GT(n, 0);
-      data_.resize(n + align - 1);
-      start_ = ALIGN_UP_TO(data_.data(), align);
+      data_ = (char *)(std::aligned_alloc(align, n));
     }
     size_t size() const { return size_; }
     char *start() {
-      __builtin_assume(U64(start_) % align == 0);
-      return start_;
+      __builtin_assume(U64(data_) % align == 0);
+      return data_;
     };
     Buffer(const Buffer &) = delete;
+    ~Buffer() { std::free(data_); }
   };
 
+  template <typename F>
   size_t Consume(size_t consume_batch_cnt, const size_t consume_batch_size,
-                 std::ostream &ostr = std::cout) {
+                 F &&fn_write) {
     auto res = RunWithMutexLock([&] {
       return ConsumeImpl(
           [&](Element &&msg) {
@@ -57,7 +57,7 @@ struct UniqAsyncLog : MutexLockWrap {
                 utils::kLogTimePointSize);
             for (std::string_view s = buff; !s.empty();) {
               if (full()) {
-                flush(ostr);
+                flush(fn_write);
               }
               auto cp_size = std::min(s.size(), buff_remain_size());
               put_buffer(s.substr(0, cp_size));
@@ -65,7 +65,7 @@ struct UniqAsyncLog : MutexLockWrap {
             }
             for (std::string_view s = msg; !s.empty();) {
               if (full()) {
-                flush(ostr);
+                flush(fn_write);
               }
               auto cp_size = std::min(s.size(), buff_remain_size());
               put_buffer(s.substr(0, cp_size));
@@ -73,9 +73,9 @@ struct UniqAsyncLog : MutexLockWrap {
             }
             {
               if (full()) {
-                flush(ostr);
+                flush(fn_write);
               }
-              put_buffer('\n');
+              put_buffer(utils::CRLF);
             }
           },
           consume_batch_cnt, consume_batch_size);
@@ -93,8 +93,8 @@ struct UniqAsyncLog : MutexLockWrap {
     return last_flush_time_.load(std::memory_order_relaxed);
   }
 
-  void Flush(std::ostream &ostr) {
-    return RunWithMutexLock([&] { flush(ostr); });
+  template <typename F> void Flush(F &&f) {
+    return RunWithMutexLock([&] { flush(std::forward<F>(f)); });
   }
 
   size_t Size() const {
@@ -108,7 +108,7 @@ struct UniqAsyncLog : MutexLockWrap {
 
   static constexpr size_t kDefaultProducerCap = 512;
   static constexpr size_t kDefaultMaxBuffSize = 1024 * 4;
-  static constexpr size_t kDefaultBuffAlign = 1024 * 4;
+  static constexpr size_t kDefaultBuffAlign = 64;
 
   UniqAsyncLog(size_t producer_cap = kDefaultProducerCap,
                size_t max_buff_size = kDefaultMaxBuffSize,
@@ -128,8 +128,8 @@ struct UniqAsyncLog : MutexLockWrap {
       bool res = spsc().Put(Element(now, std::move(msg)), MaxDuration,
                             [&] { customer_notifier.Wake(); });
       RUNTIME_ASSERT(res);
-      customer_notifier.Wake();
     });
+    customer_notifier.Wake();
   }
 
 private:
@@ -156,15 +156,15 @@ private:
   SPSC &spsc() const { return spsc_; }
   ProducerLock &producer_lock() const { return producer_lock_; }
 
-  void flush(std::ostream &ostr) {
+  template <typename F> void flush(F &&fn_write) {
     if (empty())
       return;
-    ostr.write(begin(), size());
-    ostr.flush();
+    fn_write(begin(), size());
     flushed_bytes_ += size();
     reset();
     last_flush_time_ = steady_clock_.now();
   }
+
   void put_buffer(std::string_view s) {
     std::memcpy(end(), s.data(), s.size());
     size_ += s.size();
@@ -192,11 +192,11 @@ private:
   SteadyClockType steady_clock_;
 };
 
-template <typename Log>
+template <typename Logger, typename LogWriter>
 struct AsyncLogFlushWorker final
     : SteadyTaskWithParentNotifer,
       AtomicNotifierWap,
-      std::enable_shared_from_this<AsyncLogFlushWorker<Log>> {
+      std::enable_shared_from_this<AsyncLogFlushWorker<Logger, LogWriter>> {
   using IsStop = bool;
   using NeedNextRound = bool;
   using FuncLoggerTask = std::function<NeedNextRound(IsStop)>;
@@ -205,20 +205,25 @@ struct AsyncLogFlushWorker final
 
   struct Worker {
     template <typename... Args> void RegisterSteadyFlushLog(Args &&...args) {
-      inner_->RegisterSteadyFlushLog(std::forward<Args>(args)...);
+      inner().RegisterSteadyFlushLog(std::forward<Args>(args)...);
     }
-    void Put(typename Log::Message &&msg) {
-      (*inner_).logger()->Add(std::move(msg), (*inner_));
+    template <typename LoggerMessageType> void Put(LoggerMessageType &&msg) {
+      inner().logger()->Add(std::forward<LoggerMessageType>(msg), inner());
     }
-    void Flush(std::ostream &ostr) {
-      (*inner_).logger()->Consume(std::numeric_limits<uint32_t>::max(),
-                                  std::numeric_limits<uint32_t>::max(), ostr);
-      (*inner_).logger()->Flush(ostr);
+    void Flush() {
+      inner().logger()->Flush([this](const char *p, const size_t n) {
+        inner().writer()->Write(p, n);
+      });
     }
-    std::shared_ptr<AsyncLogFlushWorker> inner_;
+
+    Worker(AsyncLogFlushWorker &inner) : inner_(inner.shared_from_this()) {}
+
+  private:
+    AsyncLogFlushWorker &inner() { return *inner_; }
+    Ptr inner_;
   };
 
-  Worker IntoWorker() { return Worker{this->shared_from_this()}; }
+  Worker IntoWorker() { return Worker(*this); }
 
   template <typename Timer>
   static void RegisterFlushLogTimer(Ptr worker, bool stop, Timer &timer,
@@ -258,17 +263,20 @@ struct AsyncLogFlushWorker final
     return true;
   }
 
-  static Ptr New(Log *logger, std::ostream &ostr) {
-    return std::make_shared<AsyncLogFlushWorker>(logger, ostr);
+  static Ptr New(Logger &&logger, LogWriter &&writer) {
+    return std::make_shared<AsyncLogFlushWorker>(
+        std::forward<Logger>(logger), std::forward<LogWriter>(writer));
   }
 
-  AsyncLogFlushWorker(Log *logger, std::ostream &ostr)
-      : logger_(logger), ostr_(ostr) {}
+  AsyncLogFlushWorker(Logger &&logger, LogWriter &&writer)
+      : logger_(std::forward<Logger>(logger)),
+        writer_(std::forward<LogWriter>(writer)) {}
 
   ~AsyncLogFlushWorker() { Stop(); }
 
 private:
-  Log *logger() { return logger_; }
+  Logger &logger() { return logger_; }
+  LogWriter &writer() { return writer_; }
 
   template <typename Timer>
   void RegisterSteadyFlushLog(Timer &timer, Milliseconds duration,
@@ -280,52 +288,61 @@ private:
   void TriggerFlush() { need_flush_log_ = true; }
 
   void TryTriggerFlush(bool stop, Milliseconds flush_timeout) {
-    if (logger_->NeedFlush(flush_timeout)) {
+    if (logger()->NeedFlush(flush_timeout)) {
       TriggerFlush();
       Wake();
     }
   }
 
   void RunOneRound() {
-    logger_->Consume(std::numeric_limits<uint32_t>::max(), 32, ostr_);
+    logger()->Consume(
+        std::numeric_limits<uint32_t>::max(), 32,
+        [this](const char *p, const size_t n) { writer()->Write(p, n); });
     if (need_flush_log_.exchange(false)) {
-      logger_->Flush(ostr_);
+      logger()->Flush(
+          [this](const char *p, const size_t n) { writer()->Write(p, n); });
     }
   }
 
 private:
-  Log *logger_{};
-  std::ostream &ostr_;
+  Logger logger_;
+  LogWriter writer_;
   std::atomic_bool need_flush_log_;
 };
 
 struct AsyncLogger {
+  struct FileWriter {
+    void Write(const char *p, const size_t n) { std::fwrite(p, 1, n, out); }
+    FileWriter *operator->() { return this; }
+    FILE *out;
+  };
   using Log = UniqAsyncLog<chrono::AsyncSystemClock, chrono::AsyncSteadyClock>;
-  using AsyncLogFlushWorker = AsyncLogFlushWorker<Log>;
+  using AsyncLogFlushWorker = AsyncLogFlushWorker<Log *, FileWriter>;
   using AsyncLogFlushWorkerPtr = std::shared_ptr<AsyncLogFlushWorker>;
   using Self = AsyncLogger;
 
   void Put(Log::Message &&msg) { worker().Put(std::move(msg)); }
-  void Flush(std::ostream &ostr) { worker().Flush(ostr); }
+  void Flush() { worker().Flush(); }
 
   AsyncLogger(AsyncLogFlushWorker::Worker worker_) : worker_(worker_) {}
 
-  static Self &GlobalSTDOUT() {
-    static auto t = GlobalAsyncLogger(std::cout);
+  static Self &GlobalStdout() {
+    static auto t = GlobalStdoutImpl();
     return t;
   }
 
 private:
-  static Self GlobalAsyncLogger(std::ostream &ostr) {
+  static Self GlobalStdoutImpl() {
     static auto &&async_logger = Log{
         chrono::AsyncSystemClock{chrono::AsyncClock::GlobalInstance().clock()},
         chrono::AsyncSteadyClock{chrono::AsyncClock::GlobalInstance().clock()},
     };
+
     auto &&timer = WheelTimerRunner::GlobalInstance();
     auto &&steady_task_runner = AsyncSteadyTaskRunner::GlobalInstance();
 
     auto worker = steady_task_runner.AddTask(
-        AsyncLogFlushWorker::New(&async_logger, ostr));
+        AsyncLogFlushWorker::New(&async_logger, FileWriter{stdout}));
     worker.RegisterSteadyFlushLog(timer, Milliseconds{32}, Milliseconds{64});
 
     return Self(worker);

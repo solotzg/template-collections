@@ -37,7 +37,7 @@ static void bench_lock_impl(const size_t n, const size_t parallel,
     waiter2.Wait();
     auto dur = time_cost.Duration();
     time_cost.Show();
-    FMSGLN("avg: {}, qps: {:.3f}", dur / n, n / (dur.count() / 1e9));
+    bench::ShowDurAvgAndOps(dur, n);
   }
   for (auto &&t : threads)
     t.join();

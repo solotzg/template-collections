@@ -105,7 +105,7 @@ struct TestAsyncTime : utils::chrono::AsyncClock {
           async_time.clock().steady_time_point().time_since_epoch().count(),
           c1.time_since_epoch().count());
       ASSERT_EQ(async_time.clock().system_time_point(), c2);
-      async_time.Run();
+      async_time.RunOneRound();
       ASSERT_GT(
           async_time.clock().steady_time_point().time_since_epoch().count(),
           c1.time_since_epoch().count());

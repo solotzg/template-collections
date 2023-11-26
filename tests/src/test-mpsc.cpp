@@ -133,7 +133,7 @@ static void _test_mpsc_fast_bin_alloc() {
   utils::MPSCQueueFastBinAlloc<TestNode> mpsc(producer_size, 10);
   {
     rp(i, 10) RUNTIME_ASSERT(mpsc.TryPush(0, i));
-    RUNTIME_ASSERT(!mpsc.TryPush(0, 1e9));
+    RUNTIME_ASSERT(!mpsc.TryPush(0, std::numeric_limits<int>::max()));
     RUNTIME_ASSERT(mpsc.IsFull());
 
     size_t k = 0;

@@ -51,6 +51,12 @@ bool FuncFactory::Run(std::string_view n, int argc, char **argv) {
   return false;
 }
 
+void ShowDurAvgAndOps(const utils::TimeCost::Clock::duration &dur, U64 n) {
+  auto &&[avg, ops] = DurAvgAndOps(dur, double(n));
+  FMSGLN("    count: {}, avg: {}, ops: {:.3f}",
+         fmt::format(std::locale("en_US.UTF-8"), "{:L}", n), avg, ops);
+}
+
 } // namespace bench
 
 int main(int argc, char **argv) {

@@ -289,7 +289,9 @@ struct TimeCost {
   void Show(const char *prefix = nullptr) const;
   void Show(TimeCost::Clock::duration dur, const char *prefix = nullptr) const;
   void Reset();
+  /// nanoseconds
   Clock::duration Duration();
+  /// seconds float64
   Seconds DurationSec();
   static Seconds IntoDurationSec(const TimeCost::Clock::duration);
 
@@ -365,22 +367,22 @@ void ToLower(std::string &s);
 std::string ToLower(std::string_view s);
 
 const char *ThreadLocalSerializeTimepoint(const SystemClock::time_point ts);
-
-ALWAYS_INLINE void SerializeTimepoint(char *p,
-                                      const SystemClock::time_point ts) {
-  auto *src = ThreadLocalSerializeTimepoint(ts);
-  std::memcpy(p, src, utils::kLogTimePointSize);
-}
+char *SerializeTimepoint(char *data, utils::SysSeconds &last_update_time_sec,
+                         const SystemClock::time_point time_point);
 
 struct STDCoutGuard {
-  static void Print(std::string_view);
-  static void PrintWithTimepointPrefix(std::string_view);
-  template <typename F> static auto Print(F &&f) {
+  static void Println(std::string_view);
+  template <typename F> static auto RunWithLock(F &&f) {
     return lock_.RunWithMutexLock(std::forward<F>(f));
+  }
+  template <typename F> static auto RunWithGlobalLockCache(F &&f) {
+    return lock_.RunWithMutexLock([&] { f(buffer_, last_update_time_sec_); });
   }
 
 private:
   static MutexLockWrap lock_;
+  static fmt::memory_buffer buffer_;
+  static utils::SysSeconds last_update_time_sec_;
 };
 
 template <typename T, typename Allocator = std::allocator<T>>
@@ -575,7 +577,7 @@ template <bool enable = true> struct ConsistencyChecker {
 
 private:
   struct Holder : utils::noncopyable {
-    ~Holder() { RUNTIME_ASSERT_EQ(obj_cnt_, 0); }
+    ~Holder() { RUNTIME_ASSERT_EQ(obj_cnt_.load(), 0); }
     Holder() = default;
     std::atomic_int64_t obj_cnt_{};
   };

@@ -44,6 +44,7 @@ typedef int8_t I8;
 #define ALWAYS_INLINE static __attribute__((always_inline))
 #define NO_INLINE __attribute__((__noinline__))
 #define FMT_LOG_TIMEPOINT "[{:%Y-%m-%d %H:%M:%S}.{:03d}]"
+#define DEFAULT_FMT_LOG_TIMEPOINT "[0000-00-00 00:00:00.000]"
 #define LOG_TIMEPOINT_SIZE 25
 #define LOG_TIMEPOINT_SPACE_HOLDER "                         "
 #define ALIGN_TO(addr, align)                                                  \
@@ -79,12 +80,9 @@ typedef int8_t I8;
     MSG(__VA_ARGS__);                                                          \
     COUT_MSG_ENDL();                                                           \
   } while (false)
-#define FMSG(...) MSG(fmt::format(__VA_ARGS__))
-#define FMSGLN(...)                                                            \
-  do {                                                                         \
-    FMSG(__VA_ARGS__);                                                         \
-    COUT_MSG_ENDL();                                                           \
-  } while (false)
+
+#define FMSG(f, ...) fmt::print(f, __VA_ARGS__)
+#define FMSGLN(f, ...) fmt::print((f "\n"), __VA_ARGS__)
 
 #define PANIC(...)                                                             \
   do {                                                                         \
@@ -241,15 +239,29 @@ typedef int8_t I8;
 
 #define HANDLE_LOG_MSG_WITH_TIME_TID(callback, fmt_str, ...)                   \
   do {                                                                         \
-    auto &&LNAME(s) = fmt::format(FMT_COMPILE("[{}:{}][" fmt_str "][tid={}]"), \
-                                  EXTRACT_FILE_NAME, __LINE__, __VA_ARGS__,    \
-                                  utils::get_tid());                           \
+    auto &&LNAME(s) =                                                          \
+        fmt::format(("[{}:{}][" fmt_str "][tid={}]"), EXTRACT_FILE_NAME,       \
+                    __LINE__, __VA_ARGS__, utils::get_tid());                  \
     callback(std::move(LNAME(s)));                                             \
   } while (false)
 
+#define PRINT_LOG_MSG_WITH_TIME_TID(fmt_str, ...)                              \
+  do {                                                                         \
+    utils::STDCoutGuard::RunWithGlobalLockCache(                               \
+        [&](fmt::memory_buffer &buffer,                                        \
+            utils::SysSeconds &last_update_time_sec) {                         \
+          buffer.resize(LOG_TIMEPOINT_SIZE);                                   \
+          fmt::format_to(std::back_inserter(buffer),                           \
+                         "[{}:{}][" fmt_str "][tid={}]\n", EXTRACT_FILE_NAME,  \
+                         __LINE__, __VA_ARGS__, utils::get_tid());             \
+          utils::SerializeTimepoint(buffer.data(), last_update_time_sec,       \
+                                    utils::SystemClock::now());                \
+          std::fwrite(buffer.data(), 1, buffer.size(), stdout);                \
+        });                                                                    \
+  } while (false)
+
 #define LOG_IMPL_1(fmt_str, ...)                                               \
-  HANDLE_LOG_MSG_WITH_TIME_TID(utils::STDCoutGuard::PrintWithTimepointPrefix,  \
-                               fmt_str, __VA_ARGS__)
+  PRINT_LOG_MSG_WITH_TIME_TID(fmt_str, __VA_ARGS__)
 
 #define LOG_IMPL_0(message) LOG_IMPL_1("{}", message)
 

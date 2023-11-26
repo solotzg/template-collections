@@ -260,7 +260,7 @@ struct AsyncClock : AsyncThreadRunner, MutexLockWrap {
         [this] {
           for (; !IsStop();) {
             auto now = SteadyClock::now();
-            Run();
+            RunOneRound();
             notifier()->BlockedWaitUtil(now + duration_);
           }
         },
@@ -301,7 +301,7 @@ struct AsyncClock : AsyncThreadRunner, MutexLockWrap {
   const NotifierPtr &notifier() const { return notifier_; }
 
 protected:
-  void Run() {
+  void RunOneRound() {
     clock_.Update();
     RunTasks();
   }

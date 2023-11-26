@@ -5,7 +5,8 @@ namespace bench {
 template <typename Alloc> static void bench_alloc_impl(const size_t n) {
   Alloc alloc{};
 
-  const auto label = fmt::format("{}", Alloc::Label);
+  const auto label =
+      fmt::format("{}, object-size: {}", Alloc::Label, Alloc::ObjSize);
 
   utils::TimeCost time_cost(label, false);
   rp(i, n) {
@@ -14,9 +15,7 @@ template <typename Alloc> static void bench_alloc_impl(const size_t n) {
   }
   auto dur = time_cost.Duration();
   time_cost.Show();
-  FMSGLN(std::locale("en_US.UTF-8"),
-         "    count: {:L}, object-size: {}, avg: {:.3}ns, ops: {:.3f}/s", n,
-         Alloc::ObjSize, dur.count() / double(n), n * 1e9 / dur.count());
+  ShowDurAvgAndOps(dur, n);
 }
 
 template <typename T> struct STL_ALLOC {

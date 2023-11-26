@@ -128,8 +128,9 @@ static void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
   waiter.WakeAll();
 
   size_t empty_cnt = 0;
-  SCOPE_EXIT(
-      { FMSGLN("    [full_cnt={}][empty_cnt={}]", *tol_full_cnt, empty_cnt); });
+  SCOPE_EXIT({
+    FMSGLN("    [full_cnt={}][empty_cnt={}]", tol_full_cnt->load(), empty_cnt);
+  });
 
   utils::TimeCost time_cost{__FUNCTION__};
 
@@ -182,8 +183,9 @@ static void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
   waiter.WakeAll();
 
   size_t empty_cnt = 0;
-  SCOPE_EXIT(
-      { FMSGLN("    [full_cnt={}][empty_cnt={}]", *tol_full_cnt, empty_cnt); });
+  SCOPE_EXIT({
+    FMSGLN("    [full_cnt={}][empty_cnt={}]", tol_full_cnt->load(), empty_cnt);
+  });
 
   utils::TimeCost time_cost{__FUNCTION__};
 
@@ -244,8 +246,9 @@ static void bench_mpsc_awake(size_t producer_size, size_t test_loop,
   waiter.WakeAll();
 
   size_t empty_cnt = 0;
-  SCOPE_EXIT(
-      { FMSGLN("    [full_cnt={}][empty_cnt={}]", *tol_full_cnt, empty_cnt); });
+  SCOPE_EXIT({
+    FMSGLN("    [full_cnt={}][empty_cnt={}]", tol_full_cnt->load(), empty_cnt);
+  });
   utils::TimeCost time_cost{__FUNCTION__};
 
   std::atomic_int64_t res = 0;
@@ -305,8 +308,9 @@ static void bench_mpsc_fastbin_alloc(size_t producer_size, size_t test_loop,
   waiter.WakeAll();
 
   size_t empty_cnt = 0;
-  SCOPE_EXIT(
-      { FMSGLN("    [full_cnt={}][empty_cnt={}]", *tol_full_cnt, empty_cnt); });
+  SCOPE_EXIT({
+    FMSGLN("    [full_cnt={}][empty_cnt={}]", tol_full_cnt->load(), empty_cnt);
+  });
   utils::TimeCost time_cost{__FUNCTION__};
 
   std::atomic_int64_t res = 0;

@@ -67,61 +67,60 @@ void ToLower(std::string &s) {
   }
 }
 
-void STDCoutGuard::Print(std::string_view str) {
+void STDCoutGuard::Println(std::string_view msg) {
   lock_.RunWithMutexLock([&] {
-    std::cout.write(str.data(), str.size());
-    std::cout.put(CRLF);
+    buffer_.resize(msg.size() + 1);
+    std::memcpy(buffer_.data(), msg.data(), msg.size());
+    buffer_.data()[msg.size()] = utils::CRLF;
+    std::fwrite(buffer_.data(), 1, buffer_.size(), stdout);
   });
-  std::cout.flush();
 }
 
-const char *
-ThreadLocalSerializeTimepoint(const SystemClock::time_point time_point) {
-  thread_local std::array<char, utils::kLogTimePointSize> buff{};
-  thread_local U64 last_update_time_sec{};
-  using DataType = std::array<char, 3>;
-  using DataPtr = std::atomic<DataType *>;
-  static std::array<DataPtr, 1000> milliseconds_map{};
-  constexpr size_t millisec_bytes = 3;
+char *SerializeTimepoint(char *data, utils::SysSeconds &last_update_time_sec,
+                         const SystemClock::time_point _time_point) {
   constexpr const char *millisec_format = "{:03d}";
-
-  auto &&sec = duration_cast<Seconds>(time_point.time_since_epoch()).count();
-  if (sec != last_update_time_sec) {
-    fmt::format_to_n(buff.data(), utils::kLogTimePointSize,
-                     FMT_COMPILE("[{:%Y-%m-%d %H:%M:%S}.???]"), time_point);
-    last_update_time_sec = sec;
+  constexpr size_t millisec_bytes = 3;
+  constexpr U64 max_milliseconds = 1000;
+  using DataType = std::array<char, millisec_bytes>;
+  using DataPtr = std::atomic<DataType *>;
+  static std::array<DataPtr, max_milliseconds> milliseconds_map{};
+  auto time_point_ms =
+      std::chrono::time_point_cast<utils::Milliseconds>(_time_point);
+  auto time_point_sec =
+      std::chrono::time_point_cast<utils::Seconds>(_time_point);
+  if (time_point_sec != last_update_time_sec) {
+    fmt::format_to(data, "[{:%Y-%m-%d %T}]", time_point_ms);
+    last_update_time_sec = time_point_sec;
+    return data;
   }
   {
     auto &&millisec =
-        duration_cast<Milliseconds>(time_point.time_since_epoch()).count() %
-        1000;
+        time_point_ms.time_since_epoch().count() % max_milliseconds;
     auto ptr = milliseconds_map[millisec].load(std::memory_order_relaxed);
     if (!ptr) {
       auto *new_ptr = new DataType();
-      fmt::format_to_n(new_ptr->data(), millisec_bytes,
-                       FMT_COMPILE(millisec_format), millisec);
+      fmt::format_to_n(new_ptr->data(), millisec_bytes, millisec_format,
+                       millisec);
       if (!milliseconds_map[millisec].compare_exchange_strong(ptr, new_ptr)) {
         delete new_ptr;
       }
       ptr = new_ptr;
     }
-    std::memcpy(buff.data() + utils::kLogTimePointSize - millisec_bytes - 1,
+    std::memcpy(data + utils::kLogTimePointSize - millisec_bytes - 1,
                 ptr->data(), millisec_bytes);
   }
-  return buff.data();
+  return data;
 }
 
-void STDCoutGuard::PrintWithTimepointPrefix(std::string_view str) {
-  lock_.RunWithMutexLock([&] {
-    auto &&now = SystemClock::now();
-    auto buff = ThreadLocalSerializeTimepoint(now);
-    std::cout.write(buff, kLogTimePointSize);
-    std::cout.write(str.data(), str.size());
-    std::cout.put(CRLF);
-  });
-  std::cout.flush();
+const char *
+ThreadLocalSerializeTimepoint(const SystemClock::time_point time_point) {
+  thread_local std::array<char, utils::kLogTimePointSize> buff{};
+  thread_local utils::SysSeconds last_update_time_sec{};
+  return SerializeTimepoint(buff.data(), last_update_time_sec, time_point);
 }
 
-MutexLockWrap STDCoutGuard::lock_{};
+MutexLockWrap STDCoutGuard::lock_;
+fmt::memory_buffer STDCoutGuard::buffer_;
+utils::SysSeconds STDCoutGuard::last_update_time_sec_;
 
 } // namespace utils
