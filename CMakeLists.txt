@@ -61,6 +61,7 @@ add_executable(CppTest main.cpp)
 add_target_pch("${PROJECT_SOURCE_DIR}/utils/pch.h" CppTest)
 target_include_directories(CppTest PUBLIC ${PROJECT_SOURCE_DIR})
 target_link_libraries(CppTest utils)
+check_and_target_link(ENABLE_ASYNC_SIMPLE CppTest async_simple)
 
 option(ENABLE_BENCHMARK "enable build benchmark" OFF)
 if(ENABLE_BENCHMARK)
