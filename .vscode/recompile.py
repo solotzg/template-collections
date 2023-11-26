@@ -7,16 +7,23 @@ except ImportError:
     import json as json
 from inner_utils import *
 
+SCRIPT_DIR = os.path.realpath(os.path.join(__file__, os.pardir))
+
 
 class Runner:
     def __init__(self):
-        self.compile_commands_path = "compile_commands.json"
-        parser = argparse.ArgumentParser(description="Compile source file by `{}`".format(self.compile_commands_path),
+        self.compile_commands_file_name = "compile_commands.json"
+        parser = argparse.ArgumentParser(description="Compile source file by `{}`".format(self.compile_commands_file_name),
                                          formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        self.funcs_map = {
+            'tidy': lambda: self.run_clang_tidy(),
+            'build': lambda: self.run_recompile(emmit_llvm=self.args.emmit_llvm, release=self.args.release, syntax_only=self.args.syntax, preprocess=self.args.preprocess),
+            'objdump': lambda: self.run_objdump(),
+        }
+        parser.add_argument(
+            '--type', help='build type', required=True, choices=set(self.funcs_map.keys()))
         parser.add_argument(
             '--file', help='absolute path of file to compile', required=True)
-        parser.add_argument(
-            '--type', help='build type', required=True, choices=('syntax', 'tidy', 'build', 'objdump', 'preprocess'))
         parser.add_argument(
             '--time-trace', help='enable time trace, will generate json profile', action="store_true",)
         parser.add_argument(
@@ -24,35 +31,49 @@ class Runner:
         parser.add_argument(
             '--clang-tidy-path', help='clang-tidy path',)
         parser.add_argument(
-            '--release-build', help='use release build compile flags', action="store_true")
+            '--release', help='use release build compile flags', action="store_true")
         parser.add_argument(
             '--emmit-llvm', help='emmit llvm information', action='store_true')
+        parser.add_argument(
+            '--syntax', help='build with syntax only option', action='store_true')
+        parser.add_argument(
+            '--preprocess', help='preprocess source file', action='store_true')
 
         self.args = parser.parse_args()
-        self.work_dir = self.args.work_dir
         os.chdir(self.work_dir)
-        with open("{}/{}".format(self.work_dir, self.compile_commands_path), "r") as f:
-            self.compile_commands_set = json.loads(f.read())
+        self._compile_commands_set = None
+        self._compile_commands_path = None
+
+    @property
+    def work_dir(self):
+        assert self.args.work_dir
+        return self.args.work_dir
+
+    @property
+    def compile_commands_set(self):
+        if self._compile_commands_set is None:
+            with open(self.compile_commands_path, "r") as f:
+                self._compile_commands_set = json.loads(f.read())
+        return self._compile_commands_set
+
+    @property
+    def compile_commands_path(self):
+        if self._compile_commands_path is None:
+            self._compile_commands_path = "{}/{}".format(
+                self.work_dir, self.compile_commands_file_name)
+        return self._compile_commands_path
 
     def run(self):
-        if self.args.type == 'syntax':
-            self.run_recompile(True,)
-        elif self.args.type == 'tidy':
-            self.run_clang_tidy()
-        elif self.args.type == 'build':
-            self.run_recompile(False,)
-        elif self.args.type == 'objdump':
-            self.run_objdump()
-        elif self.args.type == 'preprocess':
-            self.run_recompile(False, True)
-        else:
+        func = self.funcs_map.get(self.args.type)
+        if func is None:
             exit(-1)
+        func()
 
     def run_clang_tidy(self):
         assert self.args.clang_tidy_path
-        cmd = "{} -p {}/{} {}".format(
+        cmd = "{} -p {} {}".format(
             self.args.clang_tidy_path,
-            self.work_dir, self.compile_commands_path, self.args.file)
+            self.compile_commands_path, self.args.file)
 
         stdout, stderr, status = run_cmd(cmd)
         if status:
@@ -103,18 +124,19 @@ class Runner:
         logger.info(
             "... Please open file: `{}`".format(saved_file))
 
-    def run_recompile(self, syntax_only, preprocess=False, ):
+    def run_recompile(self, syntax_only=False, preprocess=False, emmit_llvm=False, release=False):
         suffix = " -fsyntax-only" if syntax_only else ""
         if self.args.time_trace:
             suffix += ' -ftime-trace'
         if preprocess:
             suffix += ' -E'
-        if self.args.emmit_llvm:
+        if emmit_llvm:
             suffix += ' -emmit-llvm -S'
+        need_obj_file = not syntax_only
 
         cmd: str = self.find_compile_block(self.args.file).get("command")
 
-        if self.args.release_build:
+        if release:
             suffix += " -O3 -DNDEBUG -fno-verbose-asm -finline-functions"
             cmd = cmd.replace("-fprofile-instr-generate", "")
             cmd = cmd.replace("-fcoverage-mapping", "")
@@ -129,8 +151,9 @@ class Runner:
             exit(-1)
         logger.info(
             "... Compilation of '{}' finished ...".format(self.args.file))
-        logger.info(
-            "... Object file: `{}`".format(self.get_obj_file_path_by_cmd(cmd)))
+        if need_obj_file:
+            logger.info(
+                "... Object file: `{}`".format(self.get_obj_file_path_by_cmd(cmd)))
 
 
 def main():
