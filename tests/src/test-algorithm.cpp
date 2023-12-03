@@ -1,9 +1,9 @@
-#include "algorithm/data_structure/Template/matrix_operation.hpp"
-#include "algorithm/math/Template/euler_function.hpp"
-#include "algorithm/math/Template/extended_euclidean.hpp"
-#include "algorithm/math/Template/prime_factors.hpp"
-#include "algorithm/math/miller_rabin/miller_rabin.hpp"
-#include "tests/tests.h"
+#include <algorithm/data_structure/Template/matrix_operation.hpp>
+#include <algorithm/math/Template/euler_function.hpp>
+#include <algorithm/math/Template/extended_euclidean.hpp>
+#include <algorithm/math/Template/prime_factors.hpp>
+#include <algorithm/math/miller_rabin/miller_rabin.hpp>
+#include <tests/tests.h>
 
 namespace tests {
 

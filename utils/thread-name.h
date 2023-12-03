@@ -1,5 +1,10 @@
 #pragma once
 
+#include <array>
+#include <optional>
+#include <string>
+#include <thread>
+
 namespace utils {
 
 bool canSetCurrentThreadName();

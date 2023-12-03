@@ -1,7 +1,7 @@
-#include "build_info.h"
-#include "version.h"
 #include <sstream>
 #include <string_view>
+#include <utils/build_info.h>
+#include <utils/version.h>
 
 namespace BuildInfo {
 const char *ReleaseVersion() { return RELEASE_VERSION; }

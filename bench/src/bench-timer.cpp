@@ -1,6 +1,5 @@
-#include "bench/bench.h"
-#include "utils/head_define.h"
-#include "utils/timer.hpp"
+#include <bench/bench.h>
+#include <utils/timer.hpp>
 
 namespace bench {
 

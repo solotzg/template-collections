@@ -1,9 +1,7 @@
-#include "utils/utils.h"
-#include <cassert>
-#include <vector>
+#include <utils/utils.h>
 
 int64_t solve(int n) {
-  ModuloOperator<int32_t, int64_t, 1020202009> modulo_;
+  utils::ModuloOperator<int32_t, int64_t, 1020202009> modulo_;
 
   std::vector<int32_t> dp;
   dp.resize(n + 2, 0);

@@ -1,7 +1,7 @@
-#include "tests/tests.h"
-#include "utils/async-log.hpp"
 #include <filesystem>
 #include <fstream>
+#include <tests/tests.h>
+#include <utils/async-log.hpp>
 
 #define LOG_ASYNC_MODE 0
 

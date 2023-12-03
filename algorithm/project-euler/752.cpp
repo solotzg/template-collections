@@ -1,6 +1,5 @@
-#include "utils/head_define.h"
-#include "utils/utils.h"
-#include <sys/_types/_int64_t.h>
+#include <utils/head_define.h>
+#include <utils/utils.h>
 
 int64_t goo(int64_t x) {
   if (x % 2 == 0 || x % 3 == 0)

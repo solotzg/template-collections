@@ -1,6 +1,21 @@
 #pragma once
 
-#include "utils/async.hpp"
+#include <utils/async.hpp>
+
+ALWAYS_INLINE
+size_t this_thread_yield(size_t last_yield_cnt) {
+  if (last_yield_cnt == -1) {
+    std::this_thread::yield();
+    return last_yield_cnt;
+  }
+  if (!last_yield_cnt) {
+    ++last_yield_cnt;
+  } else {
+    last_yield_cnt = std::min(last_yield_cnt * 2, {16});
+  }
+  rp(_, last_yield_cnt) { std::this_thread::yield(); }
+  return last_yield_cnt;
+}
 
 namespace utils {
 

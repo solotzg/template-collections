@@ -1,3 +1,7 @@
+#pragma once
+
+#include <utils/utils.h>
+
 template <typename T, int R, int C> struct Matrix {
   using Row = std::array<T, C>;
   using Data = std::array<Row, R>;

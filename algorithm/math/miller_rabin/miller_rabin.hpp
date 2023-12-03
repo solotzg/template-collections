@@ -1,6 +1,6 @@
 #pragma once
 
-#include "utils/utils.h"
+#include <utils/utils.h>
 
 struct MillerRabin {
   using Modulo = utils::OperatorWithModulo<int64_t, I128>;

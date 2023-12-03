@@ -1,6 +1,6 @@
 
-#include "tests/tests.h"
-#include "utils/timer.hpp"
+#include <tests/tests.h>
+#include <utils/timer.hpp>
 
 namespace tests {
 

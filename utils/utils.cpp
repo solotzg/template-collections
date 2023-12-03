@@ -1,5 +1,5 @@
-#include "utils.h"
-#include "thread-name.hpp"
+#include <utils/thread-name.hpp>
+#include <utils/utils.h>
 
 namespace utils {
 

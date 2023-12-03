@@ -1,4 +1,4 @@
-#include "utils/utils.h"
+#include <utils/utils.h>
 
 int64_t foo(int64_t n) {
   size_t res = 0;

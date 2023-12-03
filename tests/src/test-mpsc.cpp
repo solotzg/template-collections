@@ -1,5 +1,5 @@
-#include "tests/tests.h"
-#include "utils/mpsc.hpp"
+#include <tests/tests.h>
+#include <utils/mpsc.hpp>
 
 template <typename T>
 struct fmt::formatter<std::vector<T>> : fmt::formatter<std::string> {

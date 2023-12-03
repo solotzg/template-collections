@@ -1,6 +1,6 @@
 // Aho-Corasick Algorithm
 
-#include "utils/utils.h"
+#include <utils/utils.h>
 
 constexpr U64 kCharNum = 4;
 constexpr U64 kNodeNum = 16;

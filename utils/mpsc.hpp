@@ -1,7 +1,7 @@
 #pragma once
 
-#include "spsc_queue.hpp"
-#include "utils/list-def.h"
+#include <utils/list-def.h>
+#include <utils/spsc_queue.hpp>
 
 namespace utils {
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "thread-name.h"
+#include <utils/thread-name.h>
 
 #if defined(__linux__)
 #define INNER_DETAIL_HAS_PRCTL_PR_SET_NAME 1

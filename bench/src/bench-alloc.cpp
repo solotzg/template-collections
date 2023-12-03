@@ -1,4 +1,4 @@
-#include "bench/bench.h"
+#include <bench/bench.h>
 
 namespace bench {
 

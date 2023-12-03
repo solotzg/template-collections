@@ -1,6 +1,6 @@
 #pragma once
 
-#include "utils/utils.h"
+#include <utils/utils.h>
 
 struct EulerFunction : utils::noncopyable {
   using Vec = std::vector<int>;

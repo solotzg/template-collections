@@ -1,6 +1,6 @@
 #pragma once
 
-#include "mpsc.hpp"
+#include <utils/mpsc.hpp>
 
 namespace utils {
 

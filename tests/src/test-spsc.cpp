@@ -1,5 +1,5 @@
-#include "tests/tests.h"
-#include "utils/spsc_queue.hpp"
+#include <tests/tests.h>
+#include <utils/spsc_queue.hpp>
 
 namespace tests {
 

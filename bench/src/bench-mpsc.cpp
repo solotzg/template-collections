@@ -1,7 +1,15 @@
-#include "bench/bench.h"
-#include "utils/mpsc.hpp"
+#include <bench/bench.h>
+#include <utils/mpsc.hpp>
 
-namespace bench {
+#define DEF_THREAD_YIELD_N 10
+#define THREAD_YIELD(n)                                                        \
+  do {                                                                         \
+    rp(_, n) { std::this_thread::yield(); }                                    \
+  } while (0)
+
+namespace {
+
+#define GEN_TIME_COST(name, ...) utils::TimeCost name(fmt::format(__VA_ARGS__));
 
 using BenchElementType = int;
 using BenchNode =

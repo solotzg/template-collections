@@ -1,4 +1,4 @@
-﻿#include "utils/head_define.h"
+﻿#include <utils/head_define.h>
 
 static int64_t extend_gcd(int64_t a, int64_t b, int64_t &x, int64_t &y) {
   if (b == 0) {

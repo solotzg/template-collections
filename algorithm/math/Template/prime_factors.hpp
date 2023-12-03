@@ -1,6 +1,6 @@
 #pragma once
 
-#include "utils/utils.h"
+#include <utils/utils.h>
 
 template <typename T> struct Factor {
   T num_;
