@@ -101,10 +101,12 @@ private:
       auto cnt = task_pool_mpsc_queue().TryGet(
           [&](auto &&f, size_t producer_index) {
             if (f(stop)) {
-              task_pool_mpsc_queue().WakeProducer(producer_index);
+              task_pool_mpsc_queue().producer_notifier(producer_index).Wake();
             }
           },
-          [&](size_t pos) { task_pool_mpsc_queue().WakeProducer(pos); },
+          [&](size_t pos) {
+            task_pool_mpsc_queue().producer_notifier(pos).Wake();
+          },
           consume_batch_size_);
       if (cnt == 0)
         break;

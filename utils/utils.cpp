@@ -4,17 +4,20 @@
 namespace utils {
 
 TimeCost::TimeCost(std::string_view label, bool auto_show)
-    : label_(label), start_(Clock::now()), auto_show_(auto_show) {}
+    : label_(std::make_unique<std::string>(label)), start_(Clock::now()),
+      auto_show_(auto_show) {}
 
 void TimeCost::Show(const char *prefix) const {
   Show(Clock::now() - start_, prefix);
 }
 
 void TimeCost::Show(TimeCost::Clock::duration dur, const char *prefix) const {
-  FMSGLN("[{}]{}[time cost: {}]", label_,
+  FMSGLN("[{}]{}[time cost: {}]", label(),
          prefix ? fmt::format("[{}]", prefix) : "",
          std::chrono::duration_cast<Milliseconds>(dur));
 }
+
+std::string_view TimeCost::label() const { return (*label_); }
 
 TimeCost::~TimeCost() {
   if (auto_show_)
@@ -69,10 +72,11 @@ void ToLower(std::string &s) {
 
 void STDCoutGuard::Println(std::string_view msg) {
   lock_.RunWithMutexLock([&] {
-    buffer_.resize(msg.size() + 1);
-    std::memcpy(buffer_.data(), msg.data(), msg.size());
-    buffer_.data()[msg.size()] = utils::CRLF;
-    std::fwrite(buffer_.data(), 1, buffer_.size(), stdout);
+    auto &&buffer = global_instance_.buffer_;
+    buffer.resize(msg.size() + 1);
+    std::memcpy(buffer.data(), msg.data(), msg.size());
+    buffer.data()[msg.size()] = utils::CRLF;
+    std::fwrite(buffer.data(), 1, buffer.size(), stdout);
   });
 }
 
@@ -103,8 +107,9 @@ char *SerializeTimepoint(char *data, utils::SysSeconds &last_update_time_sec,
                        millisec);
       if (!milliseconds_map[millisec].compare_exchange_strong(ptr, new_ptr)) {
         delete new_ptr;
+      } else {
+        ptr = new_ptr;
       }
-      ptr = new_ptr;
     }
     std::memcpy(data + utils::kLogTimePointSize - millisec_bytes - 1,
                 ptr->data(), millisec_bytes);
@@ -112,15 +117,7 @@ char *SerializeTimepoint(char *data, utils::SysSeconds &last_update_time_sec,
   return data;
 }
 
-const char *
-ThreadLocalSerializeTimepoint(const SystemClock::time_point time_point) {
-  thread_local std::array<char, utils::kLogTimePointSize> buff{};
-  thread_local utils::SysSeconds last_update_time_sec{};
-  return SerializeTimepoint(buff.data(), last_update_time_sec, time_point);
-}
-
+STDCoutGuard STDCoutGuard::global_instance_;
 MutexLockWrap STDCoutGuard::lock_;
-fmt::memory_buffer STDCoutGuard::buffer_;
-utils::SysSeconds STDCoutGuard::last_update_time_sec_;
 
 } // namespace utils

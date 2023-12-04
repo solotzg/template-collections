@@ -14,38 +14,56 @@ static void bench_lock_impl(const size_t n, const size_t parallel,
   LockType lock{};
   uint64_t x{};
 
-  const auto label =
-      fmt::format(std::locale("en_US.UTF-8"), "{}-{:L}-{}", name, n, parallel);
-  utils::Waiter waiter;
-  utils::Waiter waiter2;
-  std::atomic_uint64_t r{parallel};
+  const auto label = fmt::format("{} concurrency={}", name, parallel);
+
+  std::atomic_bool waiter{}, ready_flag{};
+  std::atomic_uint64_t tcnt = parallel;
+  std::atomic_uint64_t tcnt_ready = parallel;
   std::list<std::thread> threads;
+  SCOPE_EXIT({
+    for (auto &&t : threads) {
+      t.join();
+    }
+  });
   rp(i, parallel) {
     threads.emplace_back([&] {
-      waiter.Wait();
+      {
+        if (--tcnt_ready == 0) {
+          ready_flag = true;
+          ready_flag.notify_one();
+        }
+        waiter.wait(false);
+      }
       rp(j, n) {
         lock.RunWithLock([&] { inc(x); });
       }
-      if (0 == (--r)) {
-        waiter2.WakeOne();
+      if (--tcnt == 0) {
+        waiter = false;
+        waiter.notify_one();
       }
     });
   }
+  const auto expect_n = n * threads.size();
   {
     utils::TimeCost time_cost(label, false);
-    waiter.WakeAll();
-    waiter2.Wait();
+    {
+      ready_flag.wait(false);
+      waiter = true;
+      waiter.notify_all();
+      waiter.wait(true);
+    }
     auto dur = time_cost.Duration();
     time_cost.Show();
-    bench::ShowDurAvgAndOps(dur, n);
+    bench::ShowDurAvgAndOps(dur, expect_n);
   }
-  for (auto &&t : threads)
-    t.join();
 
   if constexpr (std::is_same_v<TestLockNone, LockType>) {
-    RUNTIME_ASSERT_NE(n * threads.size(), x);
+    if (parallel != 1)
+      RUNTIME_ASSERT_NE(expect_n, x);
+    else
+      RUNTIME_ASSERT_EQ(expect_n, x);
   } else {
-    RUNTIME_ASSERT_EQ(n * threads.size(), x);
+    RUNTIME_ASSERT_EQ(expect_n, x);
   }
 }
 
@@ -58,9 +76,12 @@ struct TestMutexLock : utils::MutexLockWrap {
 static void bench_lock(int argc, char **argv) {
 
   const size_t n = 1e8;
-  const size_t parallel = 4;
+  size_t parallel = 4;
 
   std::string mode_str = argc > 0 ? utils::ToUpper(argv[0]) : "ALL";
+  if (argc > 1) {
+    parallel = std::stoi(argv[1]);
+  }
 
   auto &&fn_bench_mutex = [&] {
     bench_lock_impl<TestMutexLock>(n, parallel, "MUTEX");

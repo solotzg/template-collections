@@ -221,15 +221,15 @@ namespace chrono {
 
 struct Clock {
   SystemClock::time_point system_time_point() const {
-    return data_->system.load(std::memory_order_acquire);
+    return data_->system.load(std::memory_order_relaxed);
   }
 
   SteadyClock::time_point steady_time_point() const {
-    return data_->steady.load(std::memory_order_acquire);
+    return data_->steady.load(std::memory_order_relaxed);
   }
 
   uint32_t steady_time_point_millisec() const {
-    return data_->steady_time_point_millisec.load(std::memory_order_acquire);
+    return data_->steady_time_point_millisec.load(std::memory_order_relaxed);
   }
 
   Clock() { Update(); }
@@ -356,8 +356,7 @@ struct WheelTimerBase {
       auto index = get_tid() & size_mask();
       locks_[index].RunWithMutexLock([&] {
         for (;;) {
-          auto ok =
-              queues_[index].GenProducer().Put(std::forward<Args>(args)...);
+          auto ok = queues_[index].Put(std::forward<Args>(args)...);
           if (ok)
             break;
           std::this_thread::yield();
@@ -387,7 +386,7 @@ struct WheelTimerBase {
       rp(i, size()) {
         auto &queue = queues_[i];
         for (;;) {
-          auto data = queue.GenCustomer().Get();
+          auto data = queue.Get();
           if (!data)
             break;
           f(std::move(*data));

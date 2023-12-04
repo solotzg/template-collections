@@ -4,39 +4,15 @@
 
 namespace utils {
 
+/**
+  head  ->  ... ->  tail  -> ... ->  head
+  get()             put()
+
+  head == tail   -> empty
+  head == 1+tail -> full
+*/
 template <typename T, typename Allocator = std::allocator<T>> struct SPSCQueue {
   using Element = T;
-
-  struct SPSCQueueCustomer {
-    bool IsEmpty() { return spsc_queue_.IsEmpty(); }
-    std::optional<T> Get() { return spsc_queue_.Get(); }
-    template <typename... Args> bool Get(Args &&...args) {
-      return spsc_queue_.Get(std::forward<Args>(args)...);
-    }
-
-  private:
-    friend struct SPSCQueue;
-    SPSCQueueCustomer(SPSCQueue &spsc_queue) : spsc_queue_(spsc_queue) {}
-    SPSCQueueCustomer(const SPSCQueueCustomer &) = delete;
-    SPSCQueue &spsc_queue_;
-  };
-
-  struct SPSCQueueProducer {
-    bool IsFull() { return spsc_queue_.IsFull(); }
-    template <typename... Args> bool Put(Args &&...args) {
-      return spsc_queue_.Put(std::forward<Args>(args)...);
-    }
-
-  private:
-    friend struct SPSCQueue;
-    SPSCQueueProducer(SPSCQueue &spsc_queue) : spsc_queue_(spsc_queue) {}
-    SPSCQueueProducer(const SPSCQueueProducer &) = delete;
-    SPSCQueue &spsc_queue_;
-  };
-
-  SPSCQueueProducer GenProducer() { return SPSCQueueProducer{*this}; }
-
-  SPSCQueueCustomer GenCustomer() { return SPSCQueueCustomer{*this}; }
 
   static size_t CalcMaxNum(size_t cap) {
     assert(cap < std::numeric_limits<uint32_t>::max());
@@ -53,22 +29,19 @@ template <typename T, typename Allocator = std::allocator<T>> struct SPSCQueue {
 
   SPSCQueue(const SPSCQueue &) = delete;
 
+  inline size_t next_pos(size_t pos) const { return (pos + 1) & buffer_mask_; }
+
   ~SPSCQueue() {
-    for (;;) {
-      const auto index = head().load(std::memory_order_relaxed);
-      if (index == tail().load(std::memory_order_relaxed))
-        break;
-      GetAtImpl(index, [&](T &) constexpr {});
-      head().store((index + 1) & buffer_mask_, std::memory_order_release);
+    for (size_t cur = head(); cur != tail(); cur = next_pos(cur)) {
+      GetAtImpl(cur, [&](T &) constexpr {});
     }
+    head() = tail() = 0;
     buff_.Deallocate(max_num_, allocator_);
   }
 
   void Format(fmt::memory_buffer &out) const {
     bool is_first = true;
-    for (auto cur = head().load(std::memory_order_relaxed);
-         cur != tail().load(std::memory_order_acquire);
-         cur = (cur + 1) & buffer_mask_) {
+    for (size_t cur = head(); cur != tail(); cur = next_pos(cur)) {
       FMT_IF_APPEND(out, !is_first, ", ");
       FMT_APPEND(out, "`{}`", buff_[cur]);
       is_first = false;
@@ -79,54 +52,65 @@ template <typename T, typename Allocator = std::allocator<T>> struct SPSCQueue {
 
   size_t capacity() const { return max_num_ - 1; }
 
-protected:
-  bool LoadValidHead(size_t &cur) {
-    cur = head().load(std::memory_order_relaxed);
-    if (cur == tail_cache()) {
-      tail_cache() = tail().load(std::memory_order_acquire);
-      if (cur == tail_cache())
-        return false;
+  static constexpr size_t npos = -1;
+
+  // for consumer
+  size_t ConsumerCheckEmpty() {
+    const auto _head = head().load(std::memory_order_relaxed);
+    if (_head == tail_cache_for_get()) {
+      tail_cache_for_get() = latest_tail();
+      if (_head == tail_cache_for_get())
+        return npos;
     }
-    return true;
+    return _head;
   }
 
-  bool LoadValidTail(size_t &cur) {
-    cur = tail().load(std::memory_order_relaxed);
-    auto next = (cur + 1) & buffer_mask_;
-    if (next == head_cache()) {
-      head_cache() = head().load(std::memory_order_acquire);
-      if (next == head_cache()) {
-        return false;
+  // for producer
+  size_t ProducerCheckFull() {
+    const auto _tail = tail().load(std::memory_order_relaxed);
+    const auto next = next_pos(_tail);
+    if (next == head_cache_for_put()) {
+      head_cache_for_put() = latest_head();
+      if (next == head_cache_for_put()) {
+        return npos;
       }
     }
-    return true;
+    return _tail;
   }
 
+  size_t latest_head() const { return head().load(std::memory_order_acquire); }
+  size_t latest_tail() const { return tail().load(std::memory_order_acquire); }
+
+  // consumer gets from head
   std::optional<T> Get() {
-    size_t pos{};
-    if (!LoadValidHead(pos))
+    const size_t pos = ConsumerCheckEmpty();
+    if (pos == npos) {
       return std::nullopt;
+    }
     std::optional<T> res{};
     GetAtImpl(pos, [&](T &v) { res.emplace(std::move(v)); });
-    head().store((pos + 1) & buffer_mask_, std::memory_order_release);
+    PublishHead(next_pos(pos));
     return res;
   }
 
   bool Get(T &res) {
-    size_t pos{};
-    if (!LoadValidHead(pos))
+    const size_t pos = ConsumerCheckEmpty();
+    if (pos == npos) {
       return false;
+    }
     GetAtImpl(pos, [&](T &v) { res = std::move(v); });
-    head().store((pos + 1) & buffer_mask_, std::memory_order_release);
+    PublishHead(next_pos(pos));
     return true;
   }
 
+  // producer puts to tail
   bool Put(T &&data) {
-    size_t pos{};
-    if (!LoadValidTail(pos))
+    const size_t pos = ProducerCheckFull();
+    if (pos == npos) {
       return false;
+    }
     buff_.New(pos, std::move(data));
-    tail().store((pos + 1) & buffer_mask_, std::memory_order_release);
+    PublishTail(next_pos(pos));
     return true;
   }
 
@@ -137,45 +121,77 @@ private:
     buff_.Del(index);
   }
 
-  std::atomic_size_t &head() { return *head_; }
-  const std::atomic_size_t &head() const { return *head_; }
-  std::atomic_size_t &tail() { return *tail_; }
-  const std::atomic_size_t &tail() const { return *tail_; }
-  size_t &head_cache() { return *head_cache_; }
-  const size_t &head_cache() const { return *head_cache_; }
-  size_t &tail_cache() { return *tail_cache_; }
-  const size_t &tail_cache() const { return *tail_cache_; }
+#define IndexCache(name, self, tar)                                            \
+  struct IndexCache##name {                                                    \
+    std::atomic_size_t self;                                                   \
+    size_t tar##_cache;                                                        \
+  }
+
+  IndexCache(Get, head, tail);
+  IndexCache(Put, tail, head);
+
+#undef IndexCache
+
+  std::atomic_size_t &head() { return get_->head; }
+  const std::atomic_size_t &head() const { return get_->head; }
+  std::atomic_size_t &tail() { return put_->tail; }
+  const std::atomic_size_t &tail() const { return put_->tail; }
+  size_t &head_cache_for_put() { return put_->head_cache; }
+  const size_t &head_cache_for_put() const { return put_->head_cache; }
+  size_t &tail_cache_for_get() { return get_->tail_cache; }
+  const size_t &tail_cache_for_get() const { return get_->tail_cache; }
+  void PublishTail(size_t pos) { tail().store(pos, std::memory_order_release); }
+  void PublishHead(size_t pos) { head().store(pos, std::memory_order_release); }
 
 private:
-  Allocator allocator_;
+  [[no_unique_address]] Allocator allocator_;
   const size_t max_num_;
   const size_t buffer_mask_;
   ConstSizeArray<T, Allocator> buff_;
-  /// Aligned to CPU cache line size
-  AlignedStruct<std::atomic_size_t, BasicConfig::CPU_CACHE_LINE_SIZE> head_{};
-  AlignedStruct<std::atomic_size_t, BasicConfig::CPU_CACHE_LINE_SIZE> tail_{};
-  AlignedStruct<size_t, BasicConfig::CPU_CACHE_LINE_SIZE> head_cache_{};
-  AlignedStruct<size_t, BasicConfig::CPU_CACHE_LINE_SIZE> tail_cache_{};
+  // Aligned to CPU cache line size
+  // consumer get
+  CPUCacheLineAligned<IndexCacheGet> get_;
+  // producer put
+  CPUCacheLineAligned<IndexCachePut> put_;
 };
 
-template <typename SPSC> struct SPSCQueueWithNotifer {
+template <typename SPSC, typename ProducerNotifier = utils::Notifier>
+struct SPSCQueueWithNotifer {
   using Element = typename SPSC::Element;
 
+  // for producer
+  template <typename CB> void Put(Element &&e, CB &&cb_when_full) {
+    for (;;) {
+      if (TryPut(std::forward<Element>(e))) {
+        return;
+      } else {
+        cb_when_full();
+      }
+      producer_notifier_.BlockedWait();
+    }
+  }
+
+  // for producer
   template <typename CBFull>
-  bool Put(Element &&e, const Milliseconds &timeout, CBFull &&cb_when_full) {
-    if (auto res = TryPut(std::forward<Element>(e)); res) {
-      return res;
+  bool Put(Element &&e, const Milliseconds &timeout, CBFull &&cb_when_full)
+    requires ProducerNotifier::kCanWaitForDuration
+  {
+    if (TryPut(std::forward<Element>(e))) {
+      return true;
     }
     auto time_point = SteadyClock::now() + timeout;
     return Put(std::forward<Element>(e), time_point, std::move(cb_when_full));
   }
 
+  // for producer
   template <typename CBFull>
   bool Put(Element &&e, const SteadyClock::time_point &time_point,
-           CBFull &&cb_when_full) {
+           CBFull &&cb_when_full)
+    requires ProducerNotifier::kCanWaitForDuration
+  {
     for (;;) {
-      if (auto res = TryPut(std::forward<Element>(e)); res) {
-        return res;
+      if (TryPut(std::forward<Element>(e))) {
+        return true;
       } else {
         cb_when_full();
       }
@@ -189,26 +205,27 @@ template <typename SPSC> struct SPSCQueueWithNotifer {
       }
     }
   }
-  bool TryPut(Element &&e) {
-    return spsc_queue_.GenProducer().Put(std::forward<Element>(e));
-  }
 
-  void WakeProducer() const { producer_notifier_.Wake(); }
+  // for producer
+  bool TryPut(Element &&e) { return spsc_queue_.Put(std::forward<Element>(e)); }
 
+  // for consumer
   template <typename NotifierType, typename CallBackWhenEmpty>
   std::optional<Element> Get(const Milliseconds &timeout,
-                             NotifierType &&customer_notifier,
+                             NotifierType &&consumer_notifier,
                              CallBackWhenEmpty &&cb_empty) {
     if (auto res = TryGet(); res) {
       return res;
     }
     auto time_point = SteadyClock::now() + timeout;
-    return Get(time_point, std::move(customer_notifier), std::move(cb_empty));
+    return Get(time_point, std::forward<NotifierType>(consumer_notifier),
+               std::forward<CallBackWhenEmpty>(cb_empty));
   }
 
+  // for consumer
   template <typename NotifierType, typename CallBackWhenEmpty>
   std::optional<Element> Get(const SteadyClock::time_point &time_point,
-                             NotifierType &&customer_notifier,
+                             NotifierType &&consumer_notifier,
                              CallBackWhenEmpty &&cb_empty) {
     for (;;) {
       if (auto res = TryGet(); res) {
@@ -216,7 +233,7 @@ template <typename SPSC> struct SPSCQueueWithNotifer {
       } else {
         cb_empty();
       }
-      switch (customer_notifier.BlockedWaitUtil(time_point)) {
+      switch (consumer_notifier.BlockedWaitUtil(time_point)) {
       case Notifier::Status::Timeout: {
         return std::nullopt;
       }
@@ -227,14 +244,33 @@ template <typename SPSC> struct SPSCQueueWithNotifer {
     }
   }
 
-  std::optional<Element> TryGet() { return spsc_queue_.GenCustomer().Get(); }
+  // for consumer
+  template <typename NotifierType, typename CallBackWhenEmpty>
+  Element Get(NotifierType &&consumer_notifier, CallBackWhenEmpty &&cb_empty) {
+    for (;;) {
+      if (auto res = TryGet(); res) {
+        return std::move(*res);
+      } else {
+        cb_empty();
+      }
+      consumer_notifier.BlockedWait();
+    }
+  }
+
+  // for consumer
+  std::optional<Element> TryGet() { return spsc_queue_.Get(); }
 
   template <typename... Args>
   SPSCQueueWithNotifer(Args &&...args)
       : spsc_queue_(std::forward<Args>(args)...) {}
 
+  const ProducerNotifier &producer_notifier() const {
+    return producer_notifier_;
+  }
+
+private:
   SPSC spsc_queue_;
-  Notifier producer_notifier_;
+  ProducerNotifier producer_notifier_;
 };
 
 } // namespace utils

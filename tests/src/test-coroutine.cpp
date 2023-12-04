@@ -7,7 +7,7 @@
 
 #if LOG_ASYNC_MODE
 namespace {
-auto *s_logger = &utils::AsyncLogger::GlobalSTDOUT();
+auto *s_logger = &utils::AsyncLogger::GlobalStdout();
 }
 #define LOG(...) ASYNC_LOG_INFO(s_logger, __VA_ARGS__)
 #else

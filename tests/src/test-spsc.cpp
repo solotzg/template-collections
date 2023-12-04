@@ -20,16 +20,16 @@ static void _test_spsc_queue() {
   static_assert(alignof(utils::SPSCQueue<void *>) == 64);
   {
     utils::SPSCQueue<uint8_t> s(1);
-    auto producer = s.GenProducer();
-    auto customer = s.GenCustomer();
+    auto &&producer = s;
+    auto &&customer = s;
 
     assert(producer.Put(88));
     assert(customer.Get().value() == 88);
   }
   {
     utils::SPSCQueue<std::string> s(13);
-    auto producer = s.GenProducer();
-    auto customer = s.GenCustomer();
+    auto &&producer = s;
+    auto &&customer = s;
 
     assert(s.capacity() == 15);
     {
@@ -43,8 +43,8 @@ static void _test_spsc_queue() {
   }
   {
     utils::SPSCQueue<std::string> s(3);
-    auto producer = s.GenProducer();
-    auto customer = s.GenCustomer();
+    auto &&producer = s;
+    auto &&customer = s;
 
     assert(s.capacity() == 3);
     for (int i = 0; i < 3; ++i) {
@@ -71,8 +71,8 @@ static void _test_spsc_queue() {
     ASSERT_EQ(TestNode::obj_cnt(), 0);
     {
       utils::SPSCQueue<TestNode> s(3);
-      auto producer = s.GenProducer();
-      auto customer = s.GenCustomer();
+      auto &&producer = s;
+      auto &&customer = s;
 
       producer.Put(TestNode{2});
       producer.Put(TestNode{3});
@@ -85,8 +85,8 @@ static void _test_spsc_queue() {
 
     {
       utils::SPSCQueue<TestNode> s(3);
-      auto producer = s.GenProducer();
-      auto customer = s.GenCustomer();
+      auto &&producer = s;
+      auto &&customer = s;
 
       std::thread t1([&]() {
         for (int i = 0; i < 8192; ++i) {
@@ -122,10 +122,10 @@ static void _test_spsc_queue() {
       });
       for (int i = 0; i < 8192; ++i) {
         auto v = s.Get(utils::Seconds{8192}, customer_notifier,
-                       [&] { s.WakeProducer(); });
+                       [&] { s.producer_notifier().Wake(); });
         ASSERT(v);
         ASSERT_EQ(v->value(), i + 1);
-        s.WakeProducer();
+        s.producer_notifier().Wake();
       }
       t1.join();
       ASSERT_EQ(TestNode::obj_cnt(), 0);

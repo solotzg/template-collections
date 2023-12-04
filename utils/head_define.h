@@ -17,6 +17,7 @@
 #define rev_rep(i, a, b) _rep_impl(i, a, b, >, -=, 1)
 #define bit_test(num, index) (((num) >> (index)) & 1)
 #define RESTRICT __restrict
+#define OMIT(...)
 
 typedef long long LL;
 typedef unsigned long long ULL;
@@ -36,6 +37,11 @@ typedef uint16_t U16;
 typedef int16_t I16;
 typedef uint8_t U8;
 typedef int8_t I8;
+
+#define YIELD_CURRENT_THREAD(n)                                                \
+  do {                                                                         \
+    rp(_, n) { std::this_thread::yield(); }                                    \
+  } while (0)
 
 #define likely(x) (__builtin_expect(!!(x), 1))
 #define unlikely(x) (__builtin_expect(!!(x), 0))
@@ -81,7 +87,7 @@ typedef int8_t I8;
     COUT_MSG_ENDL();                                                           \
   } while (false)
 
-#define FMSG(f, ...) fmt::print(f, __VA_ARGS__)
+#define FMSG(...) fmt::print(__VA_ARGS__)
 #define FMSGLN(f, ...) fmt::print((f "\n"), __VA_ARGS__)
 
 #define PANIC(...)                                                             \
@@ -237,27 +243,33 @@ typedef int8_t I8;
 #define LOG_IMPL_CHOSER(...) TF_GET_29TH_ARG(__VA_ARGS__, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_1, LOG_IMPL_0)
 // clang-format on
 
-#define HANDLE_LOG_MSG_WITH_TIME_TID(callback, fmt_str, ...)                   \
+#define HANDLE_LOG_MSG_WITH_TIME_TID(handle, fmt_str, ...)                     \
   do {                                                                         \
-    auto &&LNAME(s) =                                                          \
-        fmt::format(("[{}:{}][" fmt_str "][tid={}]"), EXTRACT_FILE_NAME,       \
-                    __LINE__, __VA_ARGS__, utils::get_tid());                  \
-    callback(std::move(LNAME(s)));                                             \
+    handle([&](utils::STDCoutGuard &guard,                                     \
+               const utils::SystemClock::time_point sys_now) {                 \
+      guard.buffer().resize(LOG_TIMEPOINT_SIZE);                               \
+      fmt::format_to(std::back_inserter(guard.buffer()),                       \
+                     "[{}:{}][" fmt_str "][tid={}]\n", __FILE_NAME__,          \
+                     __LINE__, __VA_ARGS__, utils::get_tid());                 \
+      utils::SerializeTimepoint(guard.buffer().data(),                         \
+                                guard.last_update_time_sec(), sys_now);        \
+    });                                                                        \
   } while (false)
 
 #define PRINT_LOG_MSG_WITH_TIME_TID(fmt_str, ...)                              \
   do {                                                                         \
-    utils::STDCoutGuard::RunWithGlobalLockCache(                               \
-        [&](fmt::memory_buffer &buffer,                                        \
-            utils::SysSeconds &last_update_time_sec) {                         \
-          buffer.resize(LOG_TIMEPOINT_SIZE);                                   \
-          fmt::format_to(std::back_inserter(buffer),                           \
-                         "[{}:{}][" fmt_str "][tid={}]\n", EXTRACT_FILE_NAME,  \
-                         __LINE__, __VA_ARGS__, utils::get_tid());             \
-          utils::SerializeTimepoint(buffer.data(), last_update_time_sec,       \
-                                    utils::SystemClock::now());                \
-          std::fwrite(buffer.data(), 1, buffer.size(), stdout);                \
-        });                                                                    \
+    utils::STDCoutGuard::RunWithGlobalLock([&] {                               \
+      auto &&buffer = utils::STDCoutGuard::global_instance().buffer();         \
+      auto &&last_update_time_sec =                                            \
+          utils::STDCoutGuard::global_instance().last_update_time_sec();       \
+      buffer.resize(LOG_TIMEPOINT_SIZE);                                       \
+      fmt::format_to(std::back_inserter(buffer),                               \
+                     "[{}:{}][" fmt_str "][tid={}]\n", EXTRACT_FILE_NAME,      \
+                     __LINE__, __VA_ARGS__, utils::get_tid());                 \
+      utils::SerializeTimepoint(buffer.data(), last_update_time_sec,           \
+                                utils::SystemClock::now());                    \
+      std::fwrite(buffer.data(), 1, buffer.size(), stdout);                    \
+    });                                                                        \
   } while (false)
 
 #define LOG_IMPL_1(fmt_str, ...)                                               \
@@ -268,7 +280,7 @@ typedef int8_t I8;
 #define LOG_INFO(...) LOG_IMPL_CHOSER(__VA_ARGS__)(__VA_ARGS__)
 
 #define ASYNC_LOG_IMPL_1(logger, fmt_str, ...)                                 \
-  HANDLE_LOG_MSG_WITH_TIME_TID((*(logger)).Put, fmt_str, __VA_ARGS__)
+  HANDLE_LOG_MSG_WITH_TIME_TID((logger)->Add, fmt_str, __VA_ARGS__)
 
 #define ASYNC_LOG_IMPL_0(logger, message)                                      \
   ASYNC_LOG_IMPL_1(logger, "{}", message)

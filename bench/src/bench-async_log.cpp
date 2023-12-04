@@ -1,13 +1,20 @@
 #include <bench/bench.h>
 #include <utils/async-log.hpp>
 
+#ifdef NDEBUG
+#define DEBUG_SLEEP_FOR(...)
+#define DEBUG_SLEEP_FOR_MS(...)
+#else
+#define DEBUG_SLEEP_FOR(t) std::this_thread::sleep_for(t)
+#define DEBUG_SLEEP_FOR_MS(n) DEBUG_SLEEP_FOR(utils::Milliseconds{n});
+#endif
 
 namespace {
 
 void run_default(std::string_view msg) { LOG_INFO(msg); }
 
 void run_raw_cout(std::string_view msg) {
-  utils::STDCoutGuard::RunWithLock([&] {
+  utils::STDCoutGuard::RunWithGlobalLock([&] {
     std::cout.write(msg.data(), msg.size());
     std::cout.put(utils::CRLF);
   });
@@ -24,13 +31,43 @@ void run_async(utils::AsyncLogger *logger, std::string_view msg) {
 
 template <typename F>
 ALWAYS_INLINE utils::TimeCost::Clock::duration
-RunWithCoutNull(F &&f, std::string_view label) {
+RunWithCoutNull(F &&f, std::string_view label, size_t concurrency) {
 #ifdef NDEBUG
   std::freopen("/dev/null", "w", stdout);
 #endif
 
-  utils::TimeCost tc(label, false);
-  f();
+  auto &&new_label = fmt::format("{} concurrency={}", label, concurrency);
+  std::list<std::thread> threads;
+  SCOPE_EXIT({
+    for (auto &&t : threads) {
+      t.join();
+    }
+  });
+  std::atomic_bool waiter{}, ready_flag{};
+  std::atomic_uint64_t tcnt = concurrency;
+  std::atomic_uint64_t tcnt_ready = concurrency;
+  rp(tid, concurrency) {
+    threads.emplace_back([&, tid] {
+      if (--tcnt_ready == 0) {
+        ready_flag = true;
+        ready_flag.notify_one();
+      }
+      waiter.wait(false);
+      f();
+      if (--tcnt == 0) {
+        waiter = false;
+        waiter.notify_one();
+      }
+    });
+  }
+
+  utils::TimeCost tc(new_label, false);
+  {
+    ready_flag.wait(false);
+    waiter = true;
+    waiter.notify_all();
+    waiter.wait(true);
+  }
   auto dur = tc.Duration();
 
   std::freopen("/dev/tty", "w", stdout);
@@ -49,15 +86,20 @@ static void bench_async_log(int argc, char **argv) {
   const size_t msg_size = 10;
 #endif
 
+  size_t concurrency = 1;
+
   std::string mode_str = argc > 0 ? utils::ToUpper(argv[0]) : "ALL";
   std::string msg(msg_size, 't');
+  if (argc > 1) {
+    concurrency = std::stoi(argv[1]);
+  }
 
   auto fn_show_rate = [&](utils::TimeCost::Clock::duration dur) {
     double rate = 1.0 * n * (msg_size + 58) / 1024 / 1024 /
-                  utils::TimeCost::IntoDurationSec(dur);
+                  utils::TimeCost::IntoDurationSec(dur) * concurrency;
 
     FMSGLN("    IO rate: {:.3f} MB/s", rate);
-    bench::ShowDurAvgAndOps(dur, n);
+    bench::ShowDurAvgAndOps(dur, n * concurrency);
   };
 
   auto fn_bench_default = [&]() {
@@ -65,23 +107,21 @@ static void bench_async_log(int argc, char **argv) {
         [&] {
           rp(i, n) {
             run_default(msg);
-#ifndef NDEBUG
-            std::this_thread::sleep_for(utils::Milliseconds{1});
-#endif
+            DEBUG_SLEEP_FOR_MS(1);
           }
         },
-        "default(sync, fmt::print)");
+        "default(sync, fmt::print)", concurrency);
     fn_show_rate(dur);
   };
 
   auto fn_bench_raw = [&]() {
     const auto *ptr = ALIGN_TO((const char *)("tests-string-message"), 4096);
-    {
+    if (0) {
       auto dur = RunWithCoutNull(
           [&] {
             rp(i, n) { run_raw_cout({ptr, msg_size + 58}); }
           },
-          "raw(std::cout)");
+          "raw(std::cout)", concurrency);
       fn_show_rate(dur);
     }
     {
@@ -89,7 +129,7 @@ static void bench_async_log(int argc, char **argv) {
           [&] {
             rp(i, n) { run_raw_println({ptr, msg_size + 58}); }
           },
-          "raw(fmt::print)");
+          "raw(fmt::print)", concurrency);
       fn_show_rate(dur);
     }
   };
@@ -100,14 +140,12 @@ static void bench_async_log(int argc, char **argv) {
           auto *logger = &utils::AsyncLogger::GlobalStdout();
           rp(i, n) {
             run_async(logger, msg);
-#ifndef NDEBUG
-            std::this_thread::sleep_for(utils::Milliseconds{1});
-#endif
+            DEBUG_SLEEP_FOR_MS(1);
           }
           logger->Flush();
           return n;
         },
-        "async");
+        "async", concurrency);
     fn_show_rate(dur);
   };
 

@@ -116,12 +116,15 @@ private:
 };
 
 struct AsyncNotifier {
+  static constexpr const bool kCanWaitForDuration = false;
   // thread safe
   virtual bool IsAwake() const = 0;
   virtual bool Wake() const = 0;
 };
 
 struct Notifier final : AsyncNotifier, MutexCondVarWrap {
+  static constexpr const bool kCanWaitForDuration = true;
+
   enum class Status {
     Timeout,
     Normal,
@@ -135,36 +138,41 @@ struct Notifier final : AsyncNotifier, MutexCondVarWrap {
     // if flag from false to false, wait for notification.
     // if flag from true to false, do nothing.
     auto res = Status::Normal;
-    if (!is_awake_->exchange(false, std::memory_order_acq_rel)) {
+    if (!WaitAndExchangeAwake(false)) {
       RunWithUniqueLock([&](auto &lock) {
-        if (!is_awake_->load(std::memory_order_acquire)) {
+        if (!IsAwake()) {
           if (cv().wait_until(lock, time_point) == std::cv_status::timeout)
             res = Status::Timeout;
         }
       });
-      is_awake_->store(false, std::memory_order_release);
+      WaitAndExchangeAwake(false);
     }
     return res;
   }
 
   void BlockedWait() {
-    if (!is_awake_->exchange(false, std::memory_order_acq_rel)) {
+    if (!WaitAndExchangeAwake(false)) {
       RunWithUniqueLock([&](auto &lock) {
-        if (!is_awake_->load(std::memory_order_acquire)) {
+        if (!IsAwake()) {
           cv().wait(lock);
         }
       });
-      is_awake_->store(false, std::memory_order_release);
+      WaitAndExchangeAwake(false);
     }
+  }
+
+  void TryWake() const {
+    // test first
+    if (IsAwake()) {
+      return;
+    }
+    Wake();
   }
 
   bool Wake() const override {
     // if flag from false -> true, then wake up.
     // if flag from true -> true, do nothing.
-    if (IsAwake()) {
-      return false;
-    }
-    if (!is_awake_->exchange(true, std::memory_order_acq_rel)) {
+    if (!WaitAndExchangeAwake(true)) {
       // wake up notifier
       RunWithMutexLock([&] { cv().notify_one(); });
       return true;
@@ -173,12 +181,17 @@ struct Notifier final : AsyncNotifier, MutexCondVarWrap {
   }
 
   bool IsAwake() const override {
-    return is_awake_->load(std::memory_order_acquire);
+    return is_awake_->load(std::memory_order_seq_cst);
   }
 
   static NotifierPtr New() { return std::make_shared<Notifier>(); }
 
   virtual ~Notifier() = default;
+
+private:
+  bool WaitAndExchangeAwake(bool f) const {
+    return is_awake_->exchange(f, std::memory_order_acq_rel);
+  }
 
 private:
   // multi notifiers single receiver model. use another flag to avoid waiting
@@ -199,19 +212,21 @@ struct AtomicNotifier final : AsyncNotifier {
   void BlockedWait() {
     // if flag from false to false, wait for notification.
     // if flag from true to false, do nothing.
-    if (!is_awake_->exchange(false, std::memory_order_acq_rel)) {
+
+    /*
+      Use the `xchg` instruction to wait for all modifications before setting
+      awake flag to TRUE.
+     */
+    if (!WaitAndExchangeAwake(false)) {
       is_awake_->wait(false);
-      is_awake_->store(false, std::memory_order_release);
+      WaitAndExchangeAwake(false);
     }
   }
 
   bool Wake() const override {
     // if flag from false -> true, then wake up.
     // if flag from true -> true, do nothing.
-    if (IsAwake()) {
-      return false;
-    }
-    if (!is_awake_->exchange(true, std::memory_order_acq_rel)) {
+    if (!WaitAndExchangeAwake(true)) {
       // wake up notifier
       is_awake_->notify_one();
       return true;
@@ -219,11 +234,38 @@ struct AtomicNotifier final : AsyncNotifier {
     return false;
   }
 
+  void TryWake() const {
+    // test first
+    if (IsAwake()) {
+      return;
+    }
+    Wake();
+  }
+
   bool IsAwake() const override {
-    return is_awake_->load(std::memory_order_acquire);
+    return is_awake_->load(std::memory_order_seq_cst);
   }
 
   static AtomicNotifierPtr New() { return std::make_shared<Self>(); }
+
+private:
+  bool WaitAndExchangeAwake(bool f) const {
+    /*
+         0:	31 c0                	xor    %eax,%eax
+         2:	86 07                	xchg   %al,(%rdi)
+         4:	c3                   	retq
+
+      If a memory operand is referenced, the processor’s locking protocol is
+      automatically implemented for the duration of the exchange operation,
+      regardless of the presence or absence of the LOCK prefix or of the value
+      of the IOPL.
+
+      According to `MESI` protocol, the behavior about `LOCK` will apply all
+      modifications before reading. It means that what happened before `xchg`
+      must be observable.
+    */
+    return is_awake_->exchange(f, std::memory_order_acq_rel);
+  }
 
 private:
   mutable CPUCacheLineAligned<std::atomic_bool> is_awake_{false};
@@ -296,7 +338,10 @@ struct TimeCost {
   static Seconds IntoDurationSec(const TimeCost::Clock::duration);
 
 private:
-  std::string_view label_;
+  std::string_view label() const;
+
+private:
+  std::unique_ptr<std::string> label_;
   Clock::time_point start_;
   const bool auto_show_;
 };
@@ -366,23 +411,32 @@ std::string ToUpper(std::string_view s);
 void ToLower(std::string &s);
 std::string ToLower(std::string_view s);
 
-const char *ThreadLocalSerializeTimepoint(const SystemClock::time_point ts);
 char *SerializeTimepoint(char *data, utils::SysSeconds &last_update_time_sec,
                          const SystemClock::time_point time_point);
 
-struct STDCoutGuard {
+struct STDCoutGuard : noncopyable {
+  using memory_buffer = fmt::memory_buffer;
+
   static void Println(std::string_view);
-  template <typename F> static auto RunWithLock(F &&f) {
+  template <typename F> static auto RunWithGlobalLock(F &&f) {
     return lock_.RunWithMutexLock(std::forward<F>(f));
   }
-  template <typename F> static auto RunWithGlobalLockCache(F &&f) {
-    return lock_.RunWithMutexLock([&] { f(buffer_, last_update_time_sec_); });
+  const memory_buffer &buffer() const { return buffer_; }
+  memory_buffer &buffer() { return buffer_; }
+  utils::SysSeconds &last_update_time_sec() { return last_update_time_sec_; }
+  const utils::SysSeconds &last_update_time_sec() const {
+    return last_update_time_sec_;
   }
+
+  static STDCoutGuard &global_instance() { return global_instance_; }
+
+private:
+  memory_buffer buffer_;
+  utils::SysSeconds last_update_time_sec_;
 
 private:
   static MutexLockWrap lock_;
-  static fmt::memory_buffer buffer_;
-  static utils::SysSeconds last_update_time_sec_;
+  static STDCoutGuard global_instance_;
 };
 
 template <typename T, typename Allocator = std::allocator<T>>
@@ -533,7 +587,7 @@ struct SpinLockWrap {
     mutable bool locked_;
   };
 
-  bool IsLocked() const { return lock().load(std::memory_order::acquire); }
+  bool IsLocked() const { return lock().load(std::memory_order_seq_cst); }
 
   template <typename F> auto RunWithLock(F &&f) const {
     auto lock = GenLockGuard();
@@ -550,18 +604,18 @@ protected:
   bool TryLock() const {
     if (IsLocked())
       return false;
-    return !lock().exchange(true, std::memory_order::acq_rel);
+    return !lock().exchange(true, std::memory_order_acq_rel);
   }
 
   void Lock() const {
-    for (; lock().exchange(true, std::memory_order::acq_rel);) {
+    for (; lock().exchange(true, std::memory_order_acq_rel);) {
       std::this_thread::yield();
     }
   }
 
   void UnLock() const {
     ASSERT(IsLocked());
-    lock().store(false, std::memory_order::release);
+    lock().store(false, std::memory_order_release);
   }
 
   std::atomic_bool &lock() const { return *lock_; }
@@ -577,7 +631,9 @@ template <bool enable = true> struct ConsistencyChecker {
 
 private:
   struct Holder : utils::noncopyable {
-    ~Holder() { RUNTIME_ASSERT_EQ(obj_cnt_.load(), 0); }
+    ~Holder() {
+      RUNTIME_ASSERT_EQ(obj_cnt_.load(std::memory_order_seq_cst), 0);
+    }
     Holder() = default;
     std::atomic_int64_t obj_cnt_{};
   };

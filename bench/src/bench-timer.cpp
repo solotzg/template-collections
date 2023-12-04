@@ -58,7 +58,7 @@ void bench_timer_task(Timer &timer, const size_t cnt, const size_t parallel,
   }
   auto dur = time_cost.Duration();
   dur -= delay;
-  RUNTIME_ASSERT_EQ(res.load(), 0);
+  RUNTIME_ASSERT_EQ(res.load(std::memory_order_seq_cst), 0);
   time_cost.Show();
   bench::ShowDurAvgAndOps(dur, cnt);
   for (auto &&t : threads)

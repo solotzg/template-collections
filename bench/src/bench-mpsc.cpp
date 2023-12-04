@@ -2,10 +2,6 @@
 #include <utils/mpsc.hpp>
 
 #define DEF_THREAD_YIELD_N 10
-#define THREAD_YIELD(n)                                                        \
-  do {                                                                         \
-    rp(_, n) { std::this_thread::yield(); }                                    \
-  } while (0)
 
 namespace {
 
@@ -16,6 +12,16 @@ using BenchNode =
     utils::AlignedStruct<BenchElementType, alignof(BenchElementType)>;
 // using BenchNode =
 //     AlignedStruct<BenchElementType, BasicConfig::CPU_CACHE_LINE_SIZE>;
+
+template <size_t BatchSize = 512> struct BatchCounter {
+  template <typename F> void run(F &&f) {
+    if (++batch_ == BatchSize) {
+      f();
+      batch_ = 0;
+    }
+  }
+  size_t batch_ = 0;
+};
 
 template <typename T> struct MPMCNormal {
   MPMCNormal(size_t producer_size, size_t producer_cap)
@@ -106,19 +112,16 @@ private:
 
   const size_t producer_size_;
   utils::ConstSizeArray<Data> queues_;
-  utils::AlignedStruct<size_t, utils::BasicConfig::CPU_CACHE_LINE_SIZE>
-      round_robin_index_{};
+  utils::CPUCacheLineAligned<size_t> round_robin_index_{};
 };
 
 NO_INLINE
-static void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
-                                  size_t producer_cap) {
+static void bench_mpsc_normal_stl(std::string_view label, size_t producer_size,
+                                  size_t test_loop, size_t producer_cap) {
   MPMCNormal<BenchNode> mpmc_worker(producer_size, producer_cap);
   std::list<std::thread> producer_runners;
   utils::Waiter waiter;
-  utils::AlignedStruct<std::atomic_uint64_t,
-                       utils::BasicConfig::CPU_CACHE_LINE_SIZE>
-      tol_full_cnt{};
+  utils::CPUCacheLineAligned<std::atomic_uint64_t> tol_full_cnt{};
 
   rp(id, producer_size) {
     producer_runners.emplace_back([&, id]() {
@@ -127,7 +130,7 @@ static void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
       for (int i = 0; i < test_loop; ++i) {
         while (!mpmc_worker.TryPut(int(id), id)) {
           ++full_cnt;
-          std::this_thread::yield();
+          YIELD_CURRENT_THREAD(DEF_THREAD_YIELD_N);
         }
       }
       *tol_full_cnt += full_cnt;
@@ -140,7 +143,7 @@ static void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
     FMSGLN("    [full_cnt={}][empty_cnt={}]", tol_full_cnt->load(), empty_cnt);
   });
 
-  utils::TimeCost time_cost{__FUNCTION__};
+  GEN_TIME_COST(time_cost, "{} producer={}", label, producer_size);
 
   std::atomic_int64_t res = 0;
   std::atomic_int64_t cnt = 0;
@@ -150,7 +153,7 @@ static void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
     auto x = mpmc_worker.TryGet([&](BenchNode &&v) { res += *v; });
     if (!x) {
       ++empty_cnt;
-      std::this_thread::yield();
+      YIELD_CURRENT_THREAD(DEF_THREAD_YIELD_N);
       continue;
     }
     cnt += x;
@@ -166,23 +169,20 @@ static void bench_mpsc_normal_stl(size_t producer_size, size_t test_loop,
 }
 
 NO_INLINE
-static void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
-                                 size_t producer_cap) {
-  utils::MPSCQueueWithNotifer<utils::MPSCWorker<BenchNode>> mpsc_worker(
-      producer_size, producer_cap);
+static void bench_mpsc_spin_loop(std::string_view label, size_t producer_size,
+                                 size_t test_loop, size_t producer_cap) {
+  utils::MPSCWorker<BenchNode> mpsc_worker(producer_size, producer_cap);
   std::list<std::thread> producer_runners;
   utils::Waiter waiter;
-  utils::AlignedStruct<std::atomic_uint64_t,
-                       utils::BasicConfig::CPU_CACHE_LINE_SIZE>
-      tol_full_cnt{};
+  utils::CPUCacheLineAligned<std::atomic_uint64_t> tol_full_cnt{};
   rp(id, producer_size) {
     producer_runners.emplace_back([&, id]() {
       auto full_cnt = 0;
       waiter.Wait();
       for (int i = 0; i < test_loop; ++i) {
-        while (!mpsc_worker.TryPut(int(id), id)) {
+        while (!mpsc_worker.Put(int(id), id)) {
           ++full_cnt;
-          std::this_thread::yield();
+          YIELD_CURRENT_THREAD(DEF_THREAD_YIELD_N);
         }
       }
       *tol_full_cnt += full_cnt;
@@ -195,14 +195,14 @@ static void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
     FMSGLN("    [full_cnt={}][empty_cnt={}]", tol_full_cnt->load(), empty_cnt);
   });
 
-  utils::TimeCost time_cost{__FUNCTION__};
+  GEN_TIME_COST(time_cost, "{} producer={}", label, producer_size);
 
   std::atomic_int64_t res = 0;
   std::atomic_int64_t cnt = 0;
   const int64_t expect_res =
       producer_size * (producer_size - 1) / 2 * test_loop;
   for (;;) {
-    auto x = mpsc_worker.TryGet(
+    auto x = mpsc_worker.Consume(
         [&](BenchNode &&v, size_t) {
           res += *v;
           // MSGLN(v);
@@ -210,7 +210,7 @@ static void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
         [](size_t) {}, 1024 * 4);
     if (!x) {
       ++empty_cnt;
-      std::this_thread::yield();
+      YIELD_CURRENT_THREAD(DEF_THREAD_YIELD_N);
       continue;
     }
     cnt += x;
@@ -226,41 +226,48 @@ static void bench_mpsc_spin_loop(size_t producer_size, size_t test_loop,
 }
 
 NO_INLINE
-static void bench_mpsc_awake(size_t producer_size, size_t test_loop,
-                             size_t producer_cap) {
-  utils::Notifier mpsc_notifier;
-  utils::MPSCQueueWithNotifer<utils::MPSCWorker<BenchNode>> mpsc_worker(
-      producer_size, producer_cap);
+static void bench_mpsc_awake(std::string_view label, size_t producer_size,
+                             size_t test_loop, size_t producer_cap) {
+  utils::AtomicNotifier consumer_notifier;
+  utils::MPSCQueueWithNotifer<utils::MPSCWorker<BenchNode>,
+                              utils::AtomicNotifier>
+      mpsc_worker(producer_size, producer_cap);
   std::list<std::thread> producer_runners;
   utils::Waiter waiter;
-  utils::AlignedStruct<std::atomic_uint64_t,
-                       utils::BasicConfig::CPU_CACHE_LINE_SIZE>
-      tol_full_cnt{};
+  utils::CPUCacheLineAligned<std::atomic_uint64_t> tol_full_cnt{};
   rp(id, producer_size) {
     producer_runners.emplace_back([&, id]() {
-      waiter.Wait();
       size_t full_cnt = 0;
+      BatchCounter<128> b;
+
+      waiter.Wait();
       for (int i = 0; i < test_loop; ++i) {
-        auto res = mpsc_worker.Put(int(id), id, [&]() {
-          mpsc_notifier.Wake();
+        mpsc_worker.Put(int(id), id, [&]() {
+          consumer_notifier.Wake();
           ++full_cnt;
         });
-        RUNTIME_ASSERT(res);
-        mpsc_notifier.Wake();
+        b.run([&] { consumer_notifier.Wake(); });
       }
+      consumer_notifier.Wake();
       *tol_full_cnt += full_cnt;
     });
   }
-  waiter.WakeAll();
+  SCOPE_EXIT({
+    for (auto &&t : producer_runners)
+      t.join();
+  });
 
   size_t empty_cnt = 0;
+  utils::TimeCost::Clock::duration dur;
   SCOPE_EXIT({
     FMSGLN("    [full_cnt={}][empty_cnt={}]", tol_full_cnt->load(), empty_cnt);
+    bench::ShowDurAvgAndOps(dur, producer_size * test_loop);
   });
-  utils::TimeCost time_cost{__FUNCTION__};
+  GEN_TIME_COST(time_cost, "{} producer={}", label, producer_size);
+  waiter.WakeAll();
 
-  std::atomic_int64_t res = 0;
-  std::atomic_int64_t cnt = 0;
+  int64_t res = 0;
+  int64_t cnt = 0;
   const int64_t expect_res =
       producer_size * (producer_size - 1) / 2 * test_loop;
   for (;;) {
@@ -271,11 +278,12 @@ static void bench_mpsc_awake(size_t producer_size, size_t test_loop,
           // mpsc_worker.WakeProducer(producer_index);
         },
         [&](size_t empty_producer_index) {
-          mpsc_worker.WakeProducer(empty_producer_index);
+          const auto &mpsc_worker_ = mpsc_worker;
+          mpsc_worker_.producer_notifier(empty_producer_index).Wake();
           ++empty_cnt;
           //  MSGLN("wake producer", empty_producer_index);
         },
-        4 * 1024, mpsc_notifier);
+        4 * 1024, consumer_notifier);
     cnt += x;
     if (cnt >= producer_size * test_loop) {
       break;
@@ -283,23 +291,79 @@ static void bench_mpsc_awake(size_t producer_size, size_t test_loop,
     mpsc_worker.WakeAllProducers();
   }
 
-  for (auto &&t : producer_runners)
-    t.join();
+  dur = time_cost.Duration();
+
   RUNTIME_ASSERT(res == expect_res);
   RUNTIME_ASSERT(cnt == producer_size * test_loop);
 }
 
 NO_INLINE
-static void bench_mpsc_fastbin_alloc(size_t producer_size, size_t test_loop,
+static void bench_spsc_awake(std::string_view label, size_t producer_size,
+                             size_t test_loop, size_t producer_cap) {
+  utils::AtomicNotifier consumer_notifier;
+  utils::SPSCQueueWithNotifer<utils::SPSCQueue<BenchNode>,
+                              utils::AtomicNotifier>
+      spsc_worker(producer_cap);
+  std::optional<std::thread> producer_runner;
+  utils::Waiter waiter;
+  size_t tol_full_cnt{};
+  test_loop *= producer_size;
+  producer_runner.emplace([&]() {
+    waiter.Wait();
+    BatchCounter b;
+    rp(i, test_loop) {
+      spsc_worker.Put(static_cast<int>(i), [&]() {
+        consumer_notifier.Wake();
+        ++tol_full_cnt;
+      });
+      b.run([&] { consumer_notifier.Wake(); });
+    }
+    consumer_notifier.Wake();
+  });
+
+  SCOPE_EXIT(producer_runner->join());
+
+  size_t empty_cnt = 0;
+  utils::TimeCost::Clock::duration dur;
+  SCOPE_EXIT({
+    FMSGLN("    [full_cnt={}][empty_cnt={}]", tol_full_cnt, empty_cnt);
+    bench::ShowDurAvgAndOps(dur, test_loop);
+  });
+  GEN_TIME_COST(time_cost, "{} producer={}", label, producer_size);
+  waiter.WakeAll();
+
+  int64_t cnt = 0;
+  int64_t res = 0;
+  const int64_t expect_res = test_loop * (test_loop - 1) / 2;
+  BatchCounter b;
+  for (;;) {
+    auto x = spsc_worker.Get(consumer_notifier, [&] {
+      spsc_worker.producer_notifier().Wake();
+      ++empty_cnt;
+    });
+    res += *x;
+    if (++cnt >= test_loop) {
+      break;
+    }
+    b.run([&] { spsc_worker.producer_notifier().Wake(); });
+  }
+
+  dur = time_cost.Duration();
+
+  RUNTIME_ASSERT_EQ(cnt, test_loop);
+  RUNTIME_ASSERT_EQ(res, expect_res);
+}
+
+NO_INLINE
+static void bench_mpsc_fastbin_alloc(std::string_view label,
+                                     size_t producer_size, size_t test_loop,
                                      size_t producer_cap) {
   utils::Notifier mpsc_notifier;
   utils::MPSCQueueFastBinAlloc<BenchNode> mpsc_worker(
       producer_size, producer_cap * producer_size);
   std::list<std::thread> producer_runners;
   utils::Waiter waiter;
-  utils::AlignedStruct<std::atomic_uint64_t,
-                       utils::BasicConfig::CPU_CACHE_LINE_SIZE>
-      tol_full_cnt{};
+  utils::CPUCacheLineAligned<std::atomic_uint64_t> tol_full_cnt{};
   rp(id, producer_size) {
     producer_runners.emplace_back([&, id]() {
       waiter.Wait();
@@ -307,7 +371,7 @@ static void bench_mpsc_fastbin_alloc(size_t producer_size, size_t test_loop,
       for (int i = 0; i < test_loop; ++i) {
         while (!mpsc_worker.TryPush(id, BenchElementType(id))) {
           ++full_cnt;
-          std::this_thread::yield();
+          YIELD_CURRENT_THREAD(DEF_THREAD_YIELD_N);
         }
       }
       *tol_full_cnt += full_cnt;
@@ -319,7 +383,8 @@ static void bench_mpsc_fastbin_alloc(size_t producer_size, size_t test_loop,
   SCOPE_EXIT({
     FMSGLN("    [full_cnt={}][empty_cnt={}]", tol_full_cnt->load(), empty_cnt);
   });
-  utils::TimeCost time_cost{__FUNCTION__};
+
+  GEN_TIME_COST(time_cost, "{} producer={}", label, producer_size);
 
   std::atomic_int64_t res = 0;
   std::atomic_int64_t cnt = 0;
@@ -329,7 +394,7 @@ static void bench_mpsc_fastbin_alloc(size_t producer_size, size_t test_loop,
     auto x = mpsc_worker.Consume([&](auto &&v) { res += *v; }, 1024 * 4);
     if (!x) {
       ++empty_cnt;
-      std::this_thread::yield();
+      YIELD_CURRENT_THREAD(DEF_THREAD_YIELD_N);
       continue;
     }
     cnt += x;
@@ -345,30 +410,30 @@ static void bench_mpsc_fastbin_alloc(size_t producer_size, size_t test_loop,
 }
 
 static void bench_mpsc(int argc, char **argv) {
-#define M(fn_name) fn_name(7, 1024 * 1024 * 4, 1024)
-  std::string mode_name = "";
-  std::string mode_str = "";
-  if (argc > 0) {
-    mode_name = argv[0];
-    mode_str = utils::ToUpper(std::string_view{mode_name});
-  }
+  std::string mode_str = argc > 0 ? utils::ToUpper(argv[0]) : "ALL";
+  size_t producer_size = argc > 1 ? std::stoi(argv[1]) : 8;
+
+#define M(fn_name)                                                             \
+  bench_##fn_name(("bench_" #fn_name), producer_size, 1024 * 1024 * 4, 1024)
   std::unordered_map<std::string, std::function<void()>> data = {
       {"ALL",
-       [] {
-         M(bench_mpsc_normal_stl);
-         M(bench_mpsc_awake);
-         M(bench_mpsc_spin_loop);
-         M(bench_mpsc_fastbin_alloc);
+       [&] {
+         M(mpsc_normal_stl);
+         M(mpsc_awake);
+         M(mpsc_spin_loop);
+         M(mpsc_fastbin_alloc);
+         M(spsc_awake);
        }},
-      {"STL", [] { M(bench_mpsc_normal_stl); }},
-      {"AWAKE", [] { M(bench_mpsc_awake); }},
-      {"SPIN", [] { M(bench_mpsc_spin_loop); }},
-      {"FASTBIN", [] { M(bench_mpsc_fastbin_alloc); }},
+      {"STL", [&] { M(mpsc_normal_stl); }},
+      {"AWAKE", [&] { M(mpsc_awake); }},
+      {"SPSC", [&] { M(spsc_awake); }},
+      {"SPIN", [&] { M(mpsc_spin_loop); }},
+      {"FASTBIN", [&] { M(mpsc_fastbin_alloc); }},
   };
   if (auto it = data.find(mode_str); it != data.end()) {
     it->second();
   } else {
-    FMSGLN("Unknown mode `{}`, option:", mode_name);
+    FMSGLN("Unknown mode `{}`, option:", mode_str);
     for (auto &&e : data) {
       FMSGLN("  {}", e.first);
     }
@@ -378,6 +443,6 @@ static void bench_mpsc(int argc, char **argv) {
 #undef M
 }
 
-} // namespace bench
+} // namespace
 
-FUNC_FACTORY_REGISTER("MPSC", bench::bench_mpsc)
+FUNC_FACTORY_REGISTER("MPSC", bench_mpsc)

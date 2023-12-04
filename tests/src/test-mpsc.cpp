@@ -41,7 +41,7 @@ static void _test_mpsc_with_notifer() {
     for (;;) {
       auto x = s.Get([&](TestNode &&t, size_t) { res += t.value(); },
                      [&](size_t empty_producer_index) {
-                       s.WakeProducer(empty_producer_index);
+                       s.producer_notifier(empty_producer_index).Wake();
                      },
                      utils::Seconds{8192}, 8192, notifier);
       ASSERT(x);
@@ -83,8 +83,8 @@ static void _test_mpsc_queue() {
       "{size:2, data:{queue_0:{`1`, `3`, `5`}, queue_1:{`2`, `4`, `6`}}}");
   {
     std::vector<int> data{};
-    auto r = mpsc.GenCustomer().Consume(
-        [&](int x, size_t) { data.emplace_back(x); }, func_nothing1, 3);
+    auto r = mpsc.Consume([&](int x, size_t) { data.emplace_back(x); },
+                          func_nothing1, 3);
     ASSERT_EQ(r, 3);
     ASSERT(data == std::vector<int>({1, 2, 3}));
     ASSERT_EQ(mpsc.Show(),
@@ -92,8 +92,8 @@ static void _test_mpsc_queue() {
   }
   {
     std::vector<int> data;
-    auto r = mpsc.GenCustomer().Consume(
-        [&](int x, size_t) { data.emplace_back(x); }, func_nothing1, 2);
+    auto r = mpsc.Consume([&](int x, size_t) { data.emplace_back(x); },
+                          func_nothing1, 2);
     ASSERT_EQ(r, 2);
     ASSERT(data == (std::vector{4, 5}));
     ASSERT_EQ(mpsc.Show(), "{size:2, data:{queue_0:{}, queue_1:{`6`}}}");
@@ -101,9 +101,8 @@ static void _test_mpsc_queue() {
 
   {
     std::set<int> data;
-    auto r = mpsc.GenCustomer().Consume([&](int x, size_t) { data.emplace(x); },
-                                        func_nothing1,
-                                        std ::numeric_limits<size_t>::max());
+    auto r = mpsc.Consume([&](int x, size_t) { data.emplace(x); },
+                          func_nothing1, std ::numeric_limits<size_t>::max());
     ASSERT_EQ(r, 1);
     ASSERT(data == std::set<int>{6});
   }

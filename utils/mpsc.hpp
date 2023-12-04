@@ -58,13 +58,13 @@ struct MPSCWorker {
   // If `pos_hint` is same, `data` will be put into same FIFO channel.
   bool Put(T &&data, size_t pos_hint) {
     size_t pos = pos_hint % producer_size_;
-    return spsc_queues_[pos].GenProducer().Put(std::move(data));
+    return spsc_queues_[pos].Put(std::move(data));
   }
   // unsafe
   // `index` must be LT queue size
   bool PutAt(T &&data, size_t index) {
     ASSERT_LT(index, producer_size_);
-    return spsc_queues_[index].GenProducer().Put(std::move(data));
+    return spsc_queues_[index].Put(std::move(data));
   }
 
   String Show() const {
@@ -88,55 +88,37 @@ struct MPSCWorker {
     }
   }
 
-  struct MPSCWorkerCustomer {
-    template <typename CallBack, typename CallBackWhenEmpty>
-    size_t Consume(CallBack &&cb, CallBackWhenEmpty &&cb_empty,
-                   const size_t max_consume_cnt = 8) {
-      return worker_.Consume(cb, cb_empty, max_consume_cnt);
-    }
-
-    MPSCWorkerCustomer(MPSCWorker &worker) : worker_(worker) {}
-
-  private:
-    friend struct MPSCWorker;
-    MPSCWorkerCustomer(const MPSCWorkerCustomer &) = delete;
-    MPSCWorker &worker_;
-  };
-
-  MPSCWorkerCustomer GenCustomer() { return MPSCWorkerCustomer{*this}; }
-
-protected:
   // unsafe
-  template <typename CallBack, typename CallBackWhenEmpty>
-  size_t Consume(CallBack &&cb, CallBackWhenEmpty &&cb_empty,
+  template <typename Handle, typename CallBackWhenEmpty>
+  size_t Consume(Handle &&handle, CallBackWhenEmpty &&cb_empty,
                  const size_t max_consume_cnt) {
     size_t consume_cnt{};
 
     for (;;) {
       bool any_consumed = false;
-      const auto ori_queue_index = queue_round_robin_index();
+      const auto ori_queue_index = consume_round_robin();
 
       auto &&func_loop = [&](const size_t end) {
-        for (; queue_round_robin_index() < end && consume_cnt < max_consume_cnt;
-             ++queue_round_robin_index()) {
-          auto &spsc = spsc_queues_[queue_round_robin_index()];
-          if (auto t = spsc.GenCustomer().Get(); t) {
-            cb(std::move(*t), queue_round_robin_index());
+        for (; consume_round_robin() < end && consume_cnt < max_consume_cnt;
+             ++consume_round_robin()) {
+          auto &spsc = spsc_queues_[consume_round_robin()];
+          if (auto t = spsc.Get(); t) {
+            handle(std::move(*t), consume_round_robin());
             consume_cnt++;
             any_consumed = true;
           } else {
-            cb_empty(queue_round_robin_index());
+            cb_empty(consume_round_robin());
           }
         }
       };
 
       {
         // round robin start ~ end
-        func_loop(producer_size_);
+        func_loop(producer_size());
       }
       if (consume_cnt < max_consume_cnt) {
         // 0 ~ round robin start
-        queue_round_robin_index() = 0;
+        consume_round_robin() = 0;
         func_loop(ori_queue_index);
       }
 
@@ -150,39 +132,38 @@ protected:
 
 private:
   MPSCWorker(const MPSCWorker &) = delete;
-  size_t &queue_round_robin_index() { return *queue_round_robin_index_; }
-  const size_t &queue_round_robin_index() const {
-    return *queue_round_robin_index_;
-  }
+  size_t &consume_round_robin() { return *consume_round_robin_; }
+  const size_t &consume_round_robin() const { return *consume_round_robin_; }
 
 private:
   const size_t producer_size_;
-  AllocatorSPSC spsc_allocator_;
+  [[no_unique_address]] AllocatorSPSC spsc_allocator_;
   ConstSizeArray<SPSCQueueType, AllocatorSPSC> spsc_queues_;
   // writable
-  CPUCacheLineAligned<size_t> queue_round_robin_index_{};
+  CPUCacheLineAligned<size_t> consume_round_robin_{};
 };
 
-template <typename MPSC> struct MPSCQueueWithNotifer {
+template <typename MPSC, typename ProducerNotifier = utils::Notifier>
+struct MPSCQueueWithNotifer {
   using Element = typename MPSC::Element;
   using Duration = Milliseconds;
 
-  template <typename CB> bool Put(Element &&e, size_t pos, CB &&cb_when_full) {
+  template <typename CB> void Put(Element &&e, size_t pos, CB &&cb_when_full) {
     for (;;) {
-      if (auto res = TryPut(std::forward<Element>(e), pos); res) {
-        return res;
+      if (TryPut(std::forward<Element>(e), pos)) {
+        return;
       } else {
         cb_when_full();
       }
-      producer_notifier(pos).BlockedWait();
+      producer_notifier_[pos].BlockedWait();
     }
   }
 
   template <typename CB>
   bool Put(Element &&e, size_t pos, const Duration &timeout,
            CB &&cb_when_full) {
-    if (auto res = TryPut(std::forward<Element>(e), pos); res) {
-      return res;
+    if (TryPut(std::forward<Element>(e), pos)) {
+      return true;
     }
     auto time_point = SteadyClock::now() + timeout;
     return Put(std::forward<Element>(e), pos, time_point,
@@ -190,14 +171,16 @@ template <typename MPSC> struct MPSCQueueWithNotifer {
   }
   template <typename CB>
   bool Put(Element &&e, size_t pos, const SteadyClock::time_point &time_point,
-           CB &&cb_when_full) {
+           CB &&cb_when_full)
+    requires ProducerNotifier::kCanWaitForDuration
+  {
     for (;;) {
-      if (auto res = TryPut(std::forward<Element>(e), pos); res) {
-        return res;
+      if (TryPut(std::forward<Element>(e), pos)) {
+        return true;
       } else {
         cb_when_full();
       }
-      switch (producer_notifier(pos).BlockedWaitUtil(time_point)) {
+      switch (producer_notifier_[pos].BlockedWaitUtil(time_point)) {
       case Notifier::Status::Timeout:
         return false;
       case Notifier::Status::Normal:
@@ -214,25 +197,25 @@ template <typename MPSC> struct MPSCQueueWithNotifer {
             typename NotifierType>
   size_t Get(CallBack &&cb, CallBackWhenEmpty &&cb_empty,
              const Duration &timeout, const size_t max_consume_cnt,
-             NotifierType &&notifier) {
+             NotifierType &&consumer_notifier) {
     if (auto res = TryGet(cb, cb_empty, max_consume_cnt); res) {
       return res;
     }
     auto time_point = SteadyClock::now() + timeout;
     return Get(cb, cb_empty, time_point, max_consume_cnt,
-               std::forward<NotifierType>(notifier));
+               std::forward<NotifierType>(consumer_notifier));
   }
 
   template <typename CallBack, typename CallBackWhenEmpty,
             typename NotifierType>
   size_t Get(CallBack &&cb, CallBackWhenEmpty &&cb_empty,
              const SteadyClock::time_point &time_point,
-             const size_t max_consume_cnt, NotifierType &&notifier) {
+             const size_t max_consume_cnt, NotifierType &&consumer_notifier) {
     for (;;) {
       if (auto res = TryGet(cb, cb_empty, max_consume_cnt); res) {
         return res;
       }
-      switch (notifier.BlockedWaitUtil(time_point)) {
+      switch (consumer_notifier.BlockedWaitUtil(time_point)) {
       case Notifier::Status::Timeout:
         return 0;
       case Notifier::Status::Normal:
@@ -244,22 +227,21 @@ template <typename MPSC> struct MPSCQueueWithNotifer {
   template <typename CallBack, typename CallBackWhenEmpty,
             typename NotifierType>
   size_t Get(CallBack &&cb, CallBackWhenEmpty &&cb_empty,
-             const size_t max_consume_cnt, NotifierType &&notifier) {
+             const size_t max_consume_cnt, NotifierType &&consumer_notifier) {
     for (;;) {
       if (auto res = TryGet(cb, cb_empty, max_consume_cnt); res) {
         return res;
       }
-      notifier.BlockedWait();
+      consumer_notifier.BlockedWait();
     }
   }
 
   template <typename CallBack, typename CallBackWhenEmpty>
   size_t TryGet(CallBack &&cb, CallBackWhenEmpty &&cb_empty,
                 const size_t max_consume_cnt) {
-    return mpsc_queue_.GenCustomer().Consume(cb, cb_empty, max_consume_cnt);
+    return mpsc_queue_.Consume(cb, cb_empty, max_consume_cnt);
   }
 
-  void WakeProducer(size_t pos) const { producer_notifier(pos).Wake(); }
   void WakeAllProducers() const {
     for (size_t i = 0; i < producer_size(); ++i)
       producer_notifier(i).Wake();
@@ -277,7 +259,7 @@ template <typename MPSC> struct MPSCQueueWithNotifer {
 
   typename MPSC::String Show() const { return mpsc_queue_.Show(); }
 
-  const Notifier &producer_notifier(size_t i) const {
+  const ProducerNotifier &producer_notifier(size_t i) const {
     return producer_notifier_[i];
   }
 
@@ -292,11 +274,8 @@ template <typename MPSC> struct MPSCQueueWithNotifer {
   size_t producer_size() const { return mpsc_queue_.producer_size(); }
 
 private:
-  Notifier &producer_notifier(size_t i) { return producer_notifier_[i]; }
-
-private:
   MPSC mpsc_queue_;
-  ConstSizeArray<Notifier> producer_notifier_;
+  ConstSizeArray<ProducerNotifier> producer_notifier_;
 };
 
 template <typename T> struct FastAlloc : utils::SpinLockWrap {
@@ -348,9 +327,7 @@ template <typename T> struct MPSCQueueFastBinAlloc {
       head_.next = head_.prev = nullptr;
     }
 
-    utils::ListHead *&mut_next(utils::ListHead *tar) {
-      return head_.next = tar;
-    }
+    utils::ListHead *&next() { return head_.next; }
 
     static Node *ContainerOf(utils::ListHead *ptr) {
       return inner_containerof(ptr, Node, head_);
@@ -372,26 +349,25 @@ template <typename T> struct MPSCQueueFastBinAlloc {
               Args &&...args) noexcept {
       auto ptr = fast_alloc.Alloc().TakeData();
       Node *data = new (ptr) Node(std::forward<Args>(args)...);
-      utils::ListHead *ori_tail = tail();
-      data->mut_next(ori_tail);
-      for (; !tail().compare_exchange_strong(ori_tail, data->ptr());) {
+      utils::ListHead *old_tail = pending_task_head();
+      data->next() = old_tail;
+      for (; !pending_task_head().compare_exchange_strong(old_tail,
+                                                          data->ptr());) {
         std::this_thread::yield();
-        ori_tail = tail();
-        data->mut_next(ori_tail);
+        old_tail = pending_task_head();
+        data->next() = old_tail;
       }
       size += 1;
     }
 
-    bool TryGenQueue() {
-      utils::ListHead *ori_tail = tail().load(std::memory_order_acquire);
-      if (!ori_tail)
+    bool CutPendingTasks() {
+      utils::ListHead *ori_head = pending_task_head().exchange(nullptr);
+      if (!ori_head)
         return false;
-
-      ori_tail = tail().exchange(nullptr);
 
       utils::ListHead head;
       {
-        head.next = ori_tail;
+        head.next = ori_head;
         utils::ListHead *cur = &head, *next = head.next;
         for (; next;) {
           utils::ListHead *tmp = next->next;
@@ -404,18 +380,19 @@ template <typename T> struct MPSCQueueFastBinAlloc {
         cur->prev = &head;
         cur->prev->next = cur;
       }
-      inner_list_splice_tail(&head, &queue_head());
+      inner_list_splice_tail(&head, &task_queue_head());
       return true;
     }
 
     template <typename F> bool Consume(FastAlloc &fast_alloc, F &&f) {
-      if (inner_list_is_empty(&queue_head())) {
-        TryGenQueue();
+      if (inner_list_is_empty(&task_queue_head())) {
+        CutPendingTasks();
       }
-      if (inner_list_is_empty(&queue_head()))
+      if (inner_list_is_empty(&task_queue_head())) {
         return false;
+      }
       {
-        auto *first_node_head_ptr = queue_head().next;
+        auto *first_node_head_ptr = task_queue_head().next;
         inner_list_del(first_node_head_ptr);
         DataHolder holder(Node::ContainerOf(first_node_head_ptr), fast_alloc);
         f(holder.data());
@@ -423,12 +400,15 @@ template <typename T> struct MPSCQueueFastBinAlloc {
       return true;
     }
 
-    SPSC() { inner_list_init(&queue_head()); }
-    utils::ListHead &queue_head() { return *queue_head_; }
-    std::atomic<utils::ListHead *> &tail() { return *tail_; }
+    SPSC() { inner_list_init(&task_queue_head()); }
+    utils::ListHead &task_queue_head() { return *task_queue_head_; }
+    std::atomic<utils::ListHead *> &pending_task_head() {
+      return *pending_task_head_;
+    }
 
-    utils::CPUCacheLineAligned<std::atomic<utils::ListHead *>> tail_{};
-    utils::CPUCacheLineAligned<utils::ListHead> queue_head_{};
+    utils::CPUCacheLineAligned<std::atomic<utils::ListHead *>>
+        pending_task_head_{};
+    utils::CPUCacheLineAligned<utils::ListHead> task_queue_head_{};
   };
 
   template <typename... Args>
@@ -448,12 +428,12 @@ template <typename T> struct MPSCQueueFastBinAlloc {
 
     for (;;) {
       bool any_consumed = false;
-      const auto ori_queue_index = queue_round_robin_index();
+      const auto ori_queue_index = consume_round_robin();
 
       auto &&func_loop = [&](const size_t end) {
-        for (; queue_round_robin_index() < end && consume_cnt < max_consume_cnt;
-             ++queue_round_robin_index()) {
-          auto &spsc = spsc_queues()[queue_round_robin_index()];
+        for (; consume_round_robin() < end && consume_cnt < max_consume_cnt;
+             ++consume_round_robin()) {
+          auto &spsc = spsc_queues()[consume_round_robin()];
           if (spsc.Consume(fast_alloc(), std::forward<F>(f))) {
             consume_cnt++;
             any_consumed = true;
@@ -467,7 +447,7 @@ template <typename T> struct MPSCQueueFastBinAlloc {
       }
       if (consume_cnt < max_consume_cnt) {
         // 0 ~ round robin start
-        queue_round_robin_index() = 0;
+        consume_round_robin() = 0;
         func_loop(ori_queue_index);
       }
 
@@ -476,7 +456,7 @@ template <typename T> struct MPSCQueueFastBinAlloc {
       }
     }
 
-    size_->fetch_sub(consume_cnt, std::memory_order_release);
+    *size_ -= consume_cnt;
     return consume_cnt;
   }
 
@@ -510,10 +490,8 @@ template <typename T> struct MPSCQueueFastBinAlloc {
 
 protected:
   FastAlloc &fast_alloc() { return *fast_alloc_; }
-  size_t &queue_round_robin_index() { return *queue_round_robin_index_; }
-  const size_t &queue_round_robin_index() const {
-    return *queue_round_robin_index_;
-  }
+  size_t &consume_round_robin() { return *consume_round_robin_; }
+  const size_t &consume_round_robin() const { return *consume_round_robin_; }
   ConstSizeArray<SPSC> &spsc_queues() { return *spsc_queues_; }
 
 protected:
@@ -522,7 +500,7 @@ protected:
   CPUCacheLineAligned<std::atomic_size_t> size_{};
   CPUCacheLineAligned<FastAlloc> fast_alloc_;
   CPUCacheLineAligned<ConstSizeArray<SPSC>> spsc_queues_;
-  CPUCacheLineAligned<size_t> queue_round_robin_index_{};
+  CPUCacheLineAligned<size_t> consume_round_robin_{};
 };
 
 } // namespace utils
