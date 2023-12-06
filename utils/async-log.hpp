@@ -15,14 +15,7 @@ struct UniqAsyncLog : MutexLockWrap {
   using ProducerLock = MutexLockWrap;
 
   struct BufferCache : utils::noncopyable {
-    enum class Status {
-      None,
-      Waiting,
-      Ok,
-    };
-
     using Available = std::atomic_bool;
-    using Flag = std::atomic<Status>;
     using AvailableCnt = std::atomic_int32_t;
 
     BufferCache(size_t n) : size_(n) {
@@ -58,41 +51,29 @@ struct UniqAsyncLog : MutexLockWrap {
     }
 
     void release(size_t i) {
-      flag(i).store(Status::None, std::memory_order_release);
+      status(i).Reset();
       available(i).store(true, std::memory_order_release);
       if (auto ori = available_cnt()++; ori == 0) {
         available_cnt().notify_one();
       }
     }
 
-    void wait_for_ready(size_t i) {
-      if (flag(i) == Status::Ok) {
-        return;
-      }
-      if (Status::Ok != flag(i).exchange(Status::Waiting)) {
-        flag(i).wait(Status::Waiting);
-      }
-    }
+    void wait_for_ready(size_t i) { status(i).WaitForReady(); }
 
-    void wake_ready(size_t i) {
-      const auto s = flag(i).exchange(Status::Ok);
-      if (s == Status::Waiting) {
-        flag(i).notify_one();
-      }
-    }
+    void wake_ready(size_t i) { status(i).SetReady(); }
 
     utils::STDCoutGuard &operator[](size_t i) { return std::get<0>(cache_[i]); }
     Available &available(size_t i) { return *std::get<1>(cache_[i]); }
     const Available &available(size_t i) const {
       return *std::get<1>(cache_[i]);
     }
-    Flag &flag(size_t i) { return *std::get<2>(cache_[i]); }
+    utils::AtomicOnceNotify &status(size_t i) { return std::get<2>(cache_[i]); }
 
   private:
     const size_t size_;
     utils::ConstSizeArray<
         std::tuple<utils::STDCoutGuard, CPUCacheLineAligned<Available>,
-                   CPUCacheLineAligned<Flag>>>
+                   utils::AtomicOnceNotify>>
         cache_;
     CPUCacheLineAligned<AvailableCnt> available_cnt_{};
   };

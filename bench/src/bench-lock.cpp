@@ -16,7 +16,7 @@ static void bench_lock_impl(const size_t n, const size_t parallel,
 
   const auto label = fmt::format("{} concurrency={}", name, parallel);
 
-  std::atomic_bool waiter{}, ready_flag{};
+  utils::Waiter ready_flag, waiter, finish;
   std::atomic_uint64_t tcnt = parallel;
   std::atomic_uint64_t tcnt_ready = parallel;
   std::list<std::thread> threads;
@@ -29,17 +29,15 @@ static void bench_lock_impl(const size_t n, const size_t parallel,
     threads.emplace_back([&] {
       {
         if (--tcnt_ready == 0) {
-          ready_flag = true;
-          ready_flag.notify_one();
+          ready_flag.WakeOne();
         }
-        waiter.wait(false);
+        waiter.Wait();
       }
       rp(j, n) {
         lock.RunWithLock([&] { inc(x); });
       }
       if (--tcnt == 0) {
-        waiter = false;
-        waiter.notify_one();
+        finish.WakeOne();
       }
     });
   }
@@ -47,10 +45,9 @@ static void bench_lock_impl(const size_t n, const size_t parallel,
   {
     utils::TimeCost time_cost(label, false);
     {
-      ready_flag.wait(false);
-      waiter = true;
-      waiter.notify_all();
-      waiter.wait(true);
+      ready_flag.Wait();
+      waiter.WakeAll();
+      finish.Wait();
     }
     auto dur = time_cost.Duration();
     time_cost.Show();

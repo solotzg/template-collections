@@ -161,12 +161,12 @@ struct Notifier final : AsyncNotifier, MutexCondVarWrap {
     }
   }
 
-  void TryWake() const {
+  bool TryWake() const {
     // test first
     if (IsAwake()) {
-      return;
+      return false;
     }
-    Wake();
+    return Wake();
   }
 
   bool Wake() const override {
@@ -181,6 +181,11 @@ struct Notifier final : AsyncNotifier, MutexCondVarWrap {
   }
 
   bool IsAwake() const override {
+    return is_awake_->load(std::memory_order_seq_cst);
+  }
+
+  bool GetLatestAwake() const {
+    std::atomic_thread_fence(std::memory_order_seq_cst);
     return is_awake_->load(std::memory_order_seq_cst);
   }
 
@@ -234,15 +239,20 @@ struct AtomicNotifier final : AsyncNotifier {
     return false;
   }
 
-  void TryWake() const {
+  bool TryWake() const {
     // test first
     if (IsAwake()) {
-      return;
+      return false;
     }
-    Wake();
+    return Wake();
   }
 
   bool IsAwake() const override {
+    return is_awake_->load(std::memory_order_seq_cst);
+  }
+
+  bool GetLatestAwake() const {
+    std::atomic_thread_fence(std::memory_order_seq_cst);
     return is_awake_->load(std::memory_order_seq_cst);
   }
 
@@ -269,6 +279,39 @@ private:
 
 private:
   mutable CPUCacheLineAligned<std::atomic_bool> is_awake_{false};
+};
+
+struct AtomicOnceNotify {
+  enum class Status {
+    Idle,
+    Waiting,
+    Ready,
+  };
+
+  void WaitForReady() {
+    if (status_->load(std::memory_order_seq_cst) == Status::Ready)
+      return;
+    if (WaitAndExchangeAwake(Status::Waiting) != Status::Ready) {
+      status_->wait(Status::Waiting);
+    }
+  }
+
+  void SetReady() const {
+    const auto ori_status = WaitAndExchangeAwake(Status::Ready);
+    if (ori_status == Status::Waiting) {
+      status_->notify_one();
+    }
+  }
+
+  void Reset() { status_->store(Status::Idle, std::memory_order_release); }
+
+private:
+  Status WaitAndExchangeAwake(Status s) const {
+    return status_->exchange(s, std::memory_order_seq_cst);
+  }
+
+private:
+  mutable CPUCacheLineAligned<std::atomic<Status>> status_{Status::Idle};
 };
 
 struct NotifierWap {

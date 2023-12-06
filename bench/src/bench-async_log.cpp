@@ -43,30 +43,29 @@ RunWithCoutNull(F &&f, std::string_view label, size_t concurrency) {
       t.join();
     }
   });
-  std::atomic_bool waiter{}, ready_flag{};
+  utils::Waiter ready_flag, waiter, finish;
   std::atomic_uint64_t tcnt = concurrency;
   std::atomic_uint64_t tcnt_ready = concurrency;
   rp(tid, concurrency) {
     threads.emplace_back([&, tid] {
-      if (--tcnt_ready == 0) {
-        ready_flag = true;
-        ready_flag.notify_one();
+      {
+        if (--tcnt_ready == 0) {
+          ready_flag.WakeOne();
+        }
+        waiter.Wait();
       }
-      waiter.wait(false);
       f();
       if (--tcnt == 0) {
-        waiter = false;
-        waiter.notify_one();
+        finish.WakeOne();
       }
     });
   }
 
   utils::TimeCost tc(new_label, false);
   {
-    ready_flag.wait(false);
-    waiter = true;
-    waiter.notify_all();
-    waiter.wait(true);
+    ready_flag.Wait();
+    waiter.WakeAll();
+    finish.Wait();
   }
   auto dur = tc.Duration();
 
