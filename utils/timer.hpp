@@ -232,22 +232,31 @@ struct Clock {
     return data_->steady_time_point_millisec.load(std::memory_order_relaxed);
   }
 
+  SysMilliseconds system_time_point_millisec() const {
+    return data_->system_time_point_millisec.load(std::memory_order_relaxed);
+  }
+
   Clock() { Update(); }
 
   void Update() {
     const auto steady_time_point = SteadyClock::now();
     const auto sys_time_point = SystemClock::now();
-    data_->system = sys_time_point;
-    data_->steady_time_point_millisec =
+    data_->system.store(sys_time_point, std::memory_order_release);
+    data_->system_time_point_millisec.store(
+        std::chrono::time_point_cast<utils::Milliseconds>(sys_time_point),
+        std::memory_order_release);
+    data_->steady_time_point_millisec.store(
         duration_cast<Milliseconds>(steady_time_point.time_since_epoch())
-            .count();
-    data_->steady = steady_time_point;
+            .count(),
+        std::memory_order_release);
+    data_->steady.store(steady_time_point, std::memory_order_release);
   }
 
   struct Data {
     std::atomic<SystemClock::time_point> system{};
     std::atomic<SteadyClock::time_point> steady{};
     std::atomic<uint32_t> steady_time_point_millisec{};
+    std::atomic<SysMilliseconds> system_time_point_millisec{};
   };
   AlignedStruct<Data, BasicConfig::CPU_CACHE_LINE_SIZE> data_;
 };
@@ -330,6 +339,12 @@ struct AsyncSteadyClock {
 struct AsyncSystemClock {
   using time_point = SystemClock::time_point;
   time_point now() const { return clock_.system_time_point(); }
+  const Clock &clock_;
+};
+
+struct AsyncSystemClockMs {
+  using time_point = SysMilliseconds;
+  time_point now() const { return clock_.system_time_point_millisec(); }
   const Clock &clock_;
 };
 

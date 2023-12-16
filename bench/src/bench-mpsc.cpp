@@ -489,22 +489,30 @@ static void bench_spsc_raw(std::string_view label, size_t producer_size,
 
   SCOPE_EXIT(producer_runner->join());
 
-  size_t empty_cnt = 0;
   utils::TimeCost::Clock::duration dur;
   SCOPE_EXIT({ bench::ShowDurAvgAndOps(dur, test_loop); });
   GEN_TIME_COST(time_cost, "{}", label);
   waiter.WakeAll();
 
   int64_t cnt = 0;
+  int64_t res = 0;
   for (;;) {
-    for (; !spsc_queue.Get();)
-      ;
+    for (;;) {
+      auto x = spsc_queue.Get();
+      if (x) {
+        res += *x;
+        break;
+      }
+    }
+
     if (++cnt >= test_loop) {
       break;
     }
   }
 
   dur = time_cost.Duration();
+  const int64_t expect_res = test_loop * (test_loop - 1) / 2;
+  RUNTIME_ASSERT_EQ(res, expect_res);
 }
 
 static void bench_notifer(std::string_view label, size_t producer_size,
@@ -612,22 +620,28 @@ static void bench_mpsc(int argc, char **argv) {
 
 #define M(fn_name)                                                             \
   bench_##fn_name(("bench_" #fn_name), producer_size, 1024 * 1024 * 4, 1024)
-  std::unordered_map<std::string, std::function<void()>> data = {
+  bench::FuncMap data = {
       {"ALL",
        [&] {
          M(mpsc_normal_stl);
          M(mpsc_awake<utils::AtomicNotifier>);
-         M(mpsc_awake<utils::Notifier>);
          M(mpsc_spin_loop);
          // M(mpsc_fastbin_alloc);
          M(spsc<utils::AtomicNotifier>);
-         M(spsc<utils::Notifier>);
          M(notifer);
          M(spsc_raw<OptimizedSPSCQueue>);
        }},
       {"STL", [&] { M(mpsc_normal_stl); }},
-      {"AWAKE", [&] { M(mpsc_awake<utils::AtomicNotifier>); }},
-      {"SPSC", [&] { M(spsc<utils::AtomicNotifier>); }},
+      {"AWAKE",
+       [&] {
+         M(mpsc_awake<utils::AtomicNotifier>);
+         M(mpsc_awake<utils::Notifier>);
+       }},
+      {"SPSC",
+       [&] {
+         M(spsc<utils::AtomicNotifier>);
+         M(spsc<utils::Notifier>);
+       }},
       {"SPIN", [&] { M(mpsc_spin_loop); }},
       {"FASTBIN", [&] { M(mpsc_fastbin_alloc); }},
       {"NOTIFER", [&] { M(notifer); }},
@@ -637,17 +651,9 @@ static void bench_mpsc(int argc, char **argv) {
          M(spsc_raw<OptimizedSPSCQueue>);
        }},
   };
-  if (auto it = data.find(mode_str); it != data.end()) {
-    it->second();
-  } else {
-    FMSGLN("Unknown mode `{}`, option:", mode_str);
-    for (auto &&e : data) {
-      FMSGLN("  {}", e.first);
-    }
-    return;
-  }
-
 #undef M
+
+  bench::ExecFuncMap(data, mode_str);
 }
 
 } // namespace

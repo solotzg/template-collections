@@ -118,7 +118,6 @@ private:
 struct AsyncNotifier {
   static constexpr const bool kCanWaitForDuration = false;
   // thread safe
-  virtual bool IsAwake() const = 0;
   virtual bool Wake() const = 0;
 };
 
@@ -139,12 +138,15 @@ struct Notifier final : AsyncNotifier, MutexCondVarWrap {
     // if flag from true to false, do nothing.
     auto res = Status::Normal;
     if (!WaitAndExchangeAwake(false)) {
-      RunWithUniqueLock([&](auto &lock) {
-        if (!IsAwake()) {
-          if (cv().wait_until(lock, time_point) == std::cv_status::timeout)
-            res = Status::Timeout;
+      {
+        auto lock = GenUniqueLock();
+        auto s = cv().wait_until(lock, time_point, [&] {
+          return is_awake_->load(std::memory_order_acquire);
+        });
+        if (!s) {
+          res = Status::Timeout;
         }
-      });
+      }
       WaitAndExchangeAwake(false);
     }
     return res;
@@ -152,21 +154,22 @@ struct Notifier final : AsyncNotifier, MutexCondVarWrap {
 
   void BlockedWait() {
     if (!WaitAndExchangeAwake(false)) {
-      RunWithUniqueLock([&](auto &lock) {
-        if (!IsAwake()) {
-          cv().wait(lock);
-        }
-      });
+      {
+        auto lock = GenUniqueLock();
+        cv().wait(lock,
+                  [&] { return is_awake_->load(std::memory_order_acquire); });
+      }
       WaitAndExchangeAwake(false);
     }
   }
 
-  bool TryWake() const {
-    // test first
+  bool TestAndWake() const {
     if (IsAwake()) {
       return false;
     }
-    return Wake();
+    is_awake_->store(true, std::memory_order_release);
+    RunWithMutexLock([&] { cv().notify_one(); });
+    return true;
   }
 
   bool Wake() const override {
@@ -180,11 +183,7 @@ struct Notifier final : AsyncNotifier, MutexCondVarWrap {
     return false;
   }
 
-  bool IsAwake() const override {
-    return is_awake_->load(std::memory_order_seq_cst);
-  }
-
-  bool GetLatestAwake() const {
+  bool IsAwake() const {
     std::atomic_thread_fence(std::memory_order_seq_cst);
     return is_awake_->load(std::memory_order_seq_cst);
   }
@@ -193,7 +192,6 @@ struct Notifier final : AsyncNotifier, MutexCondVarWrap {
 
   virtual ~Notifier() = default;
 
-private:
   bool WaitAndExchangeAwake(bool f) const {
     return is_awake_->exchange(f, std::memory_order_acq_rel);
   }
@@ -239,26 +237,22 @@ struct AtomicNotifier final : AsyncNotifier {
     return false;
   }
 
-  bool TryWake() const {
-    // test first
+  bool TestAndWake() const {
     if (IsAwake()) {
       return false;
     }
-    return Wake();
+    is_awake_->store(true, std::memory_order_release);
+    is_awake_->notify_one();
+    return true;
   }
 
-  bool IsAwake() const override {
-    return is_awake_->load(std::memory_order_seq_cst);
-  }
-
-  bool GetLatestAwake() const {
+  bool IsAwake() const {
     std::atomic_thread_fence(std::memory_order_seq_cst);
     return is_awake_->load(std::memory_order_seq_cst);
   }
 
   static AtomicNotifierPtr New() { return std::make_shared<Self>(); }
 
-private:
   bool WaitAndExchangeAwake(bool f) const {
     /*
          0:	31 c0                	xor    %eax,%eax
@@ -454,32 +448,41 @@ std::string ToUpper(std::string_view s);
 void ToLower(std::string &s);
 std::string ToLower(std::string_view s);
 
-char *SerializeTimepoint(char *data, utils::SysSeconds &last_update_time_sec,
-                         const SystemClock::time_point time_point);
+void SerializeTimepoint(char *data, utils::SysMilliseconds &last_update_time,
+                        const utils::SysMilliseconds time_point_ms);
 
-struct STDCoutGuard : noncopyable {
-  using memory_buffer = fmt::memory_buffer;
+inline void SerializeTimepoint(char *data,
+                               utils::SysMilliseconds &last_update_time,
+                               const SystemClock::time_point time_point) {
+  SerializeTimepoint(
+      data, last_update_time,
+      std::chrono::time_point_cast<utils::Milliseconds>(time_point));
+}
 
-  static void Println(std::string_view);
-  template <typename F> static auto RunWithGlobalLock(F &&f) {
-    return lock_.RunWithMutexLock(std::forward<F>(f));
-  }
+extern MutexLockWrap global_stdout_lock;
+
+template <typename F> static auto RunWithGlobalStdoutLock(F &&f) {
+  return global_stdout_lock.RunWithMutexLock(std::forward<F>(f));
+}
+
+template <size_t buffer_min_size = 200> struct STDCoutGuard : noncopyable {
+  using memory_buffer = fmt::basic_memory_buffer<char, buffer_min_size>;
+
   const memory_buffer &buffer() const { return buffer_; }
   memory_buffer &buffer() { return buffer_; }
-  utils::SysSeconds &last_update_time_sec() { return last_update_time_sec_; }
-  const utils::SysSeconds &last_update_time_sec() const {
-    return last_update_time_sec_;
+  utils::SysMilliseconds &last_update_time_sec() { return last_update_time_; }
+  const utils::SysMilliseconds &last_update_time_sec() const {
+    return last_update_time_;
   }
 
-  static STDCoutGuard &global_instance() { return global_instance_; }
+  static STDCoutGuard &thread_local_instance() {
+    thread_local STDCoutGuard obj;
+    return obj;
+  }
 
 private:
   memory_buffer buffer_;
-  utils::SysSeconds last_update_time_sec_;
-
-private:
-  static MutexLockWrap lock_;
-  static STDCoutGuard global_instance_;
+  utils::SysMilliseconds last_update_time_;
 };
 
 template <typename T, typename Allocator = std::allocator<T>>

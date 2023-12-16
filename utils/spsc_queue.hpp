@@ -6,13 +6,15 @@ namespace utils {
 
 /**
   head  ->  ... ->  tail  -> ... ->  head
-  get()             put()
+  read()            write()
 
   head == tail   -> empty
   head == 1+tail -> full
 */
 template <typename T, typename Allocator = std::allocator<T>> struct SPSCQueue {
   using Element = T;
+
+  static constexpr size_t npos = -1;
 
   static size_t CalcMaxNum(size_t cap) {
     assert(cap < std::numeric_limits<uint32_t>::max());
@@ -29,21 +31,18 @@ template <typename T, typename Allocator = std::allocator<T>> struct SPSCQueue {
 
   SPSCQueue(const SPSCQueue &) = delete;
 
-  inline size_t next_pos(size_t pos) const { return (pos + 1) & buffer_mask_; }
-
   ~SPSCQueue() {
-    for (size_t cur = head(); cur != tail(); cur = next_pos(cur)) {
-      GetAtImpl(cur, [&](T &) constexpr {});
+    for (size_t i = read_index(); i != write_index(); i = next_index(i)) {
+      GetAtImpl(i, [](T &&) constexpr {});
     }
-    head() = tail() = 0;
     buff_.Deallocate(max_num_, allocator_);
   }
 
   void Format(fmt::memory_buffer &out) const {
     bool is_first = true;
-    for (size_t cur = head(); cur != tail(); cur = next_pos(cur)) {
+    for (size_t i = read_index(); i != write_index(); i = next_index(i)) {
       FMT_IF_APPEND(out, !is_first, ", ");
-      FMT_APPEND(out, "`{}`", buff_[cur]);
+      FMT_APPEND(out, "`{}`", buff_[i]);
       is_first = false;
     }
   }
@@ -52,96 +51,98 @@ template <typename T, typename Allocator = std::allocator<T>> struct SPSCQueue {
 
   size_t capacity() const { return max_num_ - 1; }
 
-  static constexpr size_t npos = -1;
+  size_t latest_read_index() const {
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    return read_index().load(std::memory_order_seq_cst);
+  }
 
-  // for consumer
+  size_t latest_write_index() const {
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    return write_index().load(std::memory_order_seq_cst);
+  }
+
+  // consumer
+  template <typename F> bool Get(F &&cb) {
+    const size_t p = ConsumerCheckEmpty();
+    if (p == npos) {
+      return false;
+    }
+    GetAtImpl(p, std::forward<F>(cb));
+    PublishReadIndex(next_index(p));
+    return true;
+  }
+
+  // consumer
+  std::optional<T> Get() {
+    std::optional<T> res;
+    Get([&](T &&v) { res.emplace(std::move(v)); });
+    return res;
+  }
+
+  // producer
+  template <typename... Args> bool Put(Args &&...args) {
+    const size_t p = ProducerCheckFull();
+    if (p == npos) {
+      return false;
+    }
+    buff_.New(p, std::forward<Args>(args)...);
+    PublishWriteIndex(next_index(p));
+    return true;
+  }
+
+protected:
+  // consumer
   size_t ConsumerCheckEmpty() {
-    const auto _head = head().load(std::memory_order_relaxed);
-    if (_head == tail_cache_for_get()) {
-      tail_cache_for_get() = latest_tail();
-      if (_head == tail_cache_for_get())
+    const auto index = read_index().load(std::memory_order_relaxed);
+    if (index == end_cache_for_read()) {
+      end_cache_for_read() = write_index().load(std::memory_order_acquire);
+      if (index == end_cache_for_read())
         return npos;
     }
-    return _head;
+    return index;
   }
 
   // for producer
   size_t ProducerCheckFull() {
-    const auto _tail = tail().load(std::memory_order_relaxed);
-    const auto next = next_pos(_tail);
-    if (next == head_cache_for_put()) {
-      head_cache_for_put() = latest_head();
-      if (next == head_cache_for_put()) {
+    const auto index = write_index().load(std::memory_order_relaxed);
+    const auto next = next_index(index);
+    if (next == end_cache_of_write()) {
+      end_cache_of_write() = read_index().load(std::memory_order_acquire);
+      if (next == end_cache_of_write()) {
         return npos;
       }
     }
-    return _tail;
-  }
-
-  size_t latest_head() const { return head().load(std::memory_order_acquire); }
-  size_t latest_tail() const { return tail().load(std::memory_order_acquire); }
-
-  // consumer gets from head
-  std::optional<T> Get() {
-    const size_t pos = ConsumerCheckEmpty();
-    if (pos == npos) {
-      return std::nullopt;
-    }
-    std::optional<T> res{};
-    GetAtImpl(pos, [&](T &v) { res.emplace(std::move(v)); });
-    PublishHead(next_pos(pos));
-    return res;
-  }
-
-  bool Get(T &res) {
-    const size_t pos = ConsumerCheckEmpty();
-    if (pos == npos) {
-      return false;
-    }
-    GetAtImpl(pos, [&](T &v) { res = std::move(v); });
-    PublishHead(next_pos(pos));
-    return true;
-  }
-
-  // producer puts to tail
-  bool Put(T &&data) {
-    const size_t pos = ProducerCheckFull();
-    if (pos == npos) {
-      return false;
-    }
-    buff_.New(pos, std::move(data));
-    PublishTail(next_pos(pos));
-    return true;
+    return index;
   }
 
 private:
   template <typename F> void GetAtImpl(size_t index, F &&f) {
     static_assert(std::is_destructible_v<T>);
-    f(buff_[index]);
+    f(std::move(buff_[index]));
     buff_.Del(index);
   }
 
-#define IndexCache(name, self, tar)                                            \
-  struct IndexCache##name {                                                    \
-    std::atomic_size_t self;                                                   \
-    size_t tar##_cache;                                                        \
+  struct CachedIndex {
+    std::atomic_size_t index;
+    size_t end_cache;
+  };
+
+  std::atomic_size_t &read_index() { return read_index_->index; }
+  const std::atomic_size_t &read_index() const { return read_index_->index; }
+  std::atomic_size_t &write_index() { return write_index_->index; }
+  const std::atomic_size_t &write_index() const { return write_index_->index; }
+  size_t &end_cache_of_write() { return write_index_->end_cache; }
+  size_t &end_cache_for_read() { return read_index_->end_cache; }
+
+  void PublishWriteIndex(size_t i) {
+    write_index().store(i, std::memory_order_release);
   }
 
-  IndexCache(Get, head, tail);
-  IndexCache(Put, tail, head);
+  void PublishReadIndex(size_t i) {
+    read_index().store(i, std::memory_order_release);
+  }
 
-#undef IndexCache
-
-  std::atomic_size_t &head() { return get_->head; }
-  const std::atomic_size_t &head() const { return get_->head; }
-  std::atomic_size_t &tail() { return put_->tail; }
-  const std::atomic_size_t &tail() const { return put_->tail; }
-  size_t &head_cache_for_put() { return put_->head_cache; }
-  const size_t &head_cache_for_put() const { return put_->head_cache; }
-  size_t &tail_cache_for_get() { return get_->tail_cache; }
-  const size_t &tail_cache_for_get() const { return get_->tail_cache; }
-  void PublishTail(size_t pos) { tail().store(pos, std::memory_order_release); }
-  void PublishHead(size_t pos) { head().store(pos, std::memory_order_release); }
+  size_t next_index(size_t i) const { return (i + 1) & buffer_mask_; }
 
 private:
   [[no_unique_address]] Allocator allocator_;
@@ -149,10 +150,10 @@ private:
   const size_t buffer_mask_;
   ConstSizeArray<T, Allocator> buff_;
   // Aligned to CPU cache line size
-  // consumer get
-  CPUCacheLineAligned<IndexCacheGet> get_;
-  // producer put
-  CPUCacheLineAligned<IndexCachePut> put_;
+  // consumer
+  CPUCacheLineAligned<CachedIndex> read_index_;
+  // producer
+  CPUCacheLineAligned<CachedIndex> write_index_;
 };
 
 template <typename SPSC, typename ProducerNotifier = utils::Notifier>

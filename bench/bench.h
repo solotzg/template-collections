@@ -31,6 +31,10 @@ inline auto DurAvgAndOps(const utils::TimeCost::Clock::duration &dur,
 
 void ShowDurAvgAndOps(const utils::TimeCost::Clock::duration &dur, U64 n);
 
+using FuncMap = std::unordered_map<std::string, std::function<void()>>;
+
+void ExecFuncMap(FuncMap &, const std::string &);
+
 } // namespace bench
 
 #define FUNC_FACTORY_REGISTER(name, func)                                      \

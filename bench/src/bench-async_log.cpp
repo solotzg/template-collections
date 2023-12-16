@@ -14,7 +14,7 @@ namespace {
 void run_default(std::string_view msg) { LOG_INFO(msg); }
 
 void run_raw_cout(std::string_view msg) {
-  utils::STDCoutGuard::RunWithGlobalLock([&] {
+  utils::RunWithGlobalStdoutLock([&] {
     std::cout.write(msg.data(), msg.size());
     std::cout.put(utils::CRLF);
   });
@@ -22,7 +22,14 @@ void run_raw_cout(std::string_view msg) {
 }
 
 void run_raw_println(std::string_view msg) {
-  utils::STDCoutGuard::Println(msg);
+  static utils::STDCoutGuard obj;
+  utils::RunWithGlobalStdoutLock([&] {
+    auto &&buffer = obj.buffer();
+    buffer.resize(msg.size() + 1);
+    std::memcpy(buffer.data(), msg.data(), msg.size());
+    buffer.data()[msg.size()] = utils::CRLF;
+    std::fwrite(buffer.data(), 1, buffer.size(), stdout);
+  });
 }
 
 void run_async(utils::AsyncLogger *logger, std::string_view msg) {
@@ -136,31 +143,33 @@ static void bench_async_log(int argc, char **argv) {
   auto fn_bench_async = [&]() {
     auto dur = RunWithCoutNull(
         [&] {
-          auto *logger = &utils::AsyncLogger::GlobalStdout();
+          auto &&logger = utils::AsyncLogger::GlobalStdout();
           rp(i, n) {
-            run_async(logger, msg);
+            run_async(&logger, msg);
             DEBUG_SLEEP_FOR_MS(1);
           }
-          logger->Flush();
+          logger.Flush();
           return n;
         },
         "async", concurrency);
     fn_show_rate(dur);
   };
 
-  if (mode_str == "ALL") {
-    fn_bench_default();
-    fn_bench_async();
-    fn_bench_raw();
-  } else if (mode_str == "ASYNC") {
-    fn_bench_async();
-  } else if (mode_str == "DEFAULT") {
-    fn_bench_default();
-  } else if (mode_str == "RAW") {
-    fn_bench_raw();
-  } else {
-    PANIC("Unknown mode", mode_str);
-  }
+#define M(name) fn_bench_##name();
+  bench::FuncMap data = {
+      {"ALL",
+       [&] {
+         M(default)
+         M(async)
+         M(raw)
+       }},
+      {"ASYNC", [&] { M(async) }},
+      {"DEFAULT", [&] { M(default) }},
+      {"RAW", [&] { M(raw) }},
+  };
+#undef M
+
+  bench::ExecFuncMap(data, mode_str);
 }
 
 } // namespace

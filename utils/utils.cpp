@@ -70,36 +70,31 @@ void ToLower(std::string &s) {
   }
 }
 
-void STDCoutGuard::Println(std::string_view msg) {
-  lock_.RunWithMutexLock([&] {
-    auto &&buffer = global_instance_.buffer_;
-    buffer.resize(msg.size() + 1);
-    std::memcpy(buffer.data(), msg.data(), msg.size());
-    buffer.data()[msg.size()] = utils::CRLF;
-    std::fwrite(buffer.data(), 1, buffer.size(), stdout);
-  });
+static std::pair<utils::SysMilliseconds, U64>
+into_sec_remain_millisec(utils::SysMilliseconds time_point) {
+  auto time_point_sec = std::chrono::time_point_cast<utils::Milliseconds>(
+      std::chrono::time_point_cast<utils::Seconds>(time_point));
+  auto &&millisec = (time_point - time_point_sec).count();
+
+  return {time_point_sec, millisec};
 }
 
-char *SerializeTimepoint(char *data, utils::SysSeconds &last_update_time_sec,
-                         const SystemClock::time_point _time_point) {
+void SerializeTimepoint(char *data,
+                        utils::SysMilliseconds &last_update_time_sec,
+                        const utils::SysMilliseconds time_point_ms) {
   constexpr const char *millisec_format = "{:03d}";
   constexpr size_t millisec_bytes = 3;
   constexpr U64 max_milliseconds = 1000;
   using DataType = std::array<char, millisec_bytes>;
   using DataPtr = std::atomic<DataType *>;
   static std::array<DataPtr, max_milliseconds> milliseconds_map{};
-  auto time_point_ms =
-      std::chrono::time_point_cast<utils::Milliseconds>(_time_point);
-  auto time_point_sec =
-      std::chrono::time_point_cast<utils::Seconds>(_time_point);
+  auto &&[time_point_sec, millisec] = into_sec_remain_millisec(time_point_ms);
   if (time_point_sec != last_update_time_sec) {
     fmt::format_to(data, "[{:%Y-%m-%d %T}]", time_point_ms);
     last_update_time_sec = time_point_sec;
-    return data;
+    return;
   }
   {
-    auto &&millisec =
-        time_point_ms.time_since_epoch().count() % max_milliseconds;
     auto ptr = milliseconds_map[millisec].load(std::memory_order_relaxed);
     if (!ptr) {
       auto *new_ptr = new DataType();
@@ -114,10 +109,8 @@ char *SerializeTimepoint(char *data, utils::SysSeconds &last_update_time_sec,
     std::memcpy(data + utils::kLogTimePointSize - millisec_bytes - 1,
                 ptr->data(), millisec_bytes);
   }
-  return data;
 }
 
-STDCoutGuard STDCoutGuard::global_instance_;
-MutexLockWrap STDCoutGuard::lock_;
+MutexLockWrap global_stdout_lock;
 
 } // namespace utils

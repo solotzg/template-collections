@@ -1,4 +1,5 @@
 #include <bench/bench.h>
+#include <utils/timer.hpp>
 
 namespace bench {
 
@@ -55,6 +56,17 @@ void ShowDurAvgAndOps(const utils::TimeCost::Clock::duration &dur, U64 n) {
   auto &&[avg, ops] = DurAvgAndOps(dur, double(n));
   FMSGLN("    count: {}, avg: {}, ops: {:.3f}",
          fmt::format(std::locale("en_US.UTF-8"), "{:L}", n), avg, ops);
+}
+
+void ExecFuncMap(FuncMap &data, const std::string &fname) {
+  if (auto it = data.find(fname); it != data.end()) {
+    it->second();
+  } else {
+    FMSGLN("Unknown func `{}`, option:", fname);
+    for (auto &&e : data) {
+      FMSGLN("  {}", e.first);
+    }
+  }
 }
 
 } // namespace bench

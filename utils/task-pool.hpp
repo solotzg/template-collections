@@ -8,8 +8,7 @@ namespace utils {
   SetAsyncNotifier -> IsAvailable -> Run; * -> Stop;
 */
 struct SteadyTask {
-  virtual void Run() = 0;
-  virtual bool IsAvailable() = 0;
+  virtual bool Run() = 0;
   virtual void Stop() = 0;
   virtual void SetAsyncNotifier(AsyncNotifierPtr) = 0;
 };
@@ -83,17 +82,15 @@ private:
     return producer_lock_[index];
   }
 
-  bool IsAvailable() override { return notifier().IsAwake(); }
-
   void Stop() override {
     RunWithMutexLock([&] { RunOneRound(true); });
   }
 
-  void Run() override {
-    RunWithMutexLock([&] {
-      notifier().BlockedWait();
-      RunOneRound(false);
-    });
+  bool Run() override {
+    if (!notifier().WaitAndExchangeAwake(false))
+      return false;
+    RunWithMutexLock([&] { RunOneRound(false); });
+    return true;
   }
 
   void RunOneRound(bool stop) {
@@ -174,14 +171,13 @@ struct AsyncSteadyTaskRunner : AsyncThreadRunner {
 
     void RunOneRound() {
       RunWithMutexLock([&] {
-        for (bool over = false; !over;) {
-          over = true;
+        for (;;) {
+          bool any_consumed = false;
           for (auto &&t : tasks()) {
-            if (t->IsAvailable()) {
-              t->Run();
-              over = false;
-            }
+            any_consumed |= t->Run();
           }
+          if (!any_consumed)
+            break;
         }
       });
     }

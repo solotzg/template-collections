@@ -16,6 +16,7 @@ using Milliseconds = std::chrono::milliseconds;
 using Seconds = std::chrono::seconds;
 
 using SysSeconds = std::chrono::sys_seconds;
+using SysMilliseconds = std::chrono::sys_time<utils::Milliseconds>;
 
 template <typename T, typename UP> struct OperatorWithModulo {
   static inline T mul_mod(T a, T b, T mod) {
@@ -203,6 +204,10 @@ struct GlobalThreadIDHolder {
     thread_local uint64_t tid = ++g_tid;
     return tid;
   }
+  std::string_view StrThreadID() {
+    thread_local std::string stid = std::to_string(ThreadID());
+    return stid;
+  }
 
 private:
   std::atomic_uint64_t g_tid{};
@@ -211,6 +216,9 @@ private:
 static auto &global_thread_id_holder = GlobalThreadIDHolder::instance();
 
 inline uint64_t get_tid() { return global_thread_id_holder.ThreadID(); }
+inline std::string_view get_str_tid() {
+  return global_thread_id_holder.StrThreadID();
+}
 
 static constexpr size_t kLogTimePointSize = LOG_TIMEPOINT_SIZE;
 

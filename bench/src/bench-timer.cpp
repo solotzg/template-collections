@@ -1,7 +1,7 @@
 #include <bench/bench.h>
 #include <utils/timer.hpp>
 
-namespace bench {
+namespace {
 
 static void bench_async_clock(const size_t cnt) {
   auto &async_time = utils::chrono::AsyncClock::GlobalInstance();
@@ -92,23 +92,24 @@ static void bench_timer(int argc, char **argv) {
   };
 
 #define M(name) fn_bench_timer_##name();
-  if (mode_str == "ALL") {
-    M(async)
-    M(stl)
-    M(task)
-    M(wheel_task)
-  } else if (mode_str == "ASYNC") {
-    M(async)
-  } else if (mode_str == "STL") {
-    M(stl)
-  } else if (mode_str == "TASK") {
-    M(task)
-  } else if (mode_str == "WHEEL") {
-    M(wheel_task)
-  }
+  bench::FuncMap data = {
+      {"ALL",
+       [&] {
+         M(async)
+         M(stl)
+         M(task)
+         M(wheel_task)
+       }},
+      {"ASYNC", [&] { M(async) }},
+      {"STL", [&] { M(stl) }},
+      {"TASK", [&] { M(task) }},
+      {"WHEEL", [&] { M(wheel_task) }},
+  };
 #undef M
+
+  bench::ExecFuncMap(data, mode_str);
 }
 
-} // namespace bench
+} // namespace
 
-FUNC_FACTORY_REGISTER("TIMER", bench::bench_timer)
+FUNC_FACTORY_REGISTER("TIMER", bench_timer)

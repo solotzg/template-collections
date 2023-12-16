@@ -51,13 +51,9 @@ static void _test_spsc_queue() {
       assert(producer.Put(std::to_string(i)));
     }
     assert(!producer.Put("..."));
-    std::string v;
-    assert(customer.Get(v));
-    assert(v == "0");
-    assert(customer.Get(v));
-    assert(v == "1");
-    assert(customer.Get(v));
-    assert(v == "2");
+    assert(customer.Get() == "0");
+    assert(customer.Get() == "1");
+    assert(customer.Get() == "2");
     {
       assert(producer.Put("..."));
       assert(customer.Get() == "...");

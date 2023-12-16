@@ -55,7 +55,7 @@ private:
   utils::SpinLockWrap lock_;
 };
 
-NO_INLINE void run_stl(char *p, utils::SysSeconds &last_update_time_sec) {
+NO_INLINE void run_stl(char *p, utils::SysMilliseconds &last_update_time_sec) {
   utils::SerializeTimepoint(p, last_update_time_sec, utils::SystemClock::now());
 }
 NO_INLINE void run_async(char *RESTRICT p, const char *RESTRICT src) {
@@ -69,7 +69,7 @@ static void bench_async_timepoint(int argc, char **argv) {
   const size_t n = 20;
 #endif
   std::array<char, utils::kLogTimePointSize> buff;
-  utils::SysSeconds last_update_time_sec{};
+  utils::SysMilliseconds last_update_time_sec{};
 
   auto fn_bench_stl = [&]() {
     utils::TimeCost tc("STL", false);
@@ -119,14 +119,19 @@ static void bench_async_timepoint(int argc, char **argv) {
 
   std::string mode_str = argc > 0 ? utils::ToUpper(argv[0]) : "ALL";
 
-  if (mode_str == "ALL") {
-    fn_bench_stl();
-    fn_bench_async();
-  } else if (mode_str == "ASYNC") {
-    fn_bench_async();
-  } else if (mode_str == "STL") {
-    fn_bench_stl();
-  }
+#define M(name) fn_bench_##name();
+  bench::FuncMap data = {
+      {"ALL",
+       [&] {
+         M(stl)
+         M(async)
+       }},
+      {"ASYNC", [&] { M(async) }},
+      {"STL", [&] { M(stl) }},
+  };
+#undef M
+
+  bench::ExecFuncMap(data, mode_str);
 }
 
 FUNC_FACTORY_REGISTER("ASYNC_TIMEPOINT", bench_async_timepoint)

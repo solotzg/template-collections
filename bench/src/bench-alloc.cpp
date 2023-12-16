@@ -1,6 +1,6 @@
 #include <bench/bench.h>
 
-namespace bench {
+namespace {
 
 template <typename Alloc> static void bench_alloc_impl(const size_t n) {
   Alloc alloc{};
@@ -15,7 +15,7 @@ template <typename Alloc> static void bench_alloc_impl(const size_t n) {
   }
   auto dur = time_cost.Duration();
   time_cost.Show();
-  ShowDurAvgAndOps(dur, n);
+  bench::ShowDurAvgAndOps(dur, n);
 }
 
 template <typename T> struct STL_ALLOC {
@@ -80,17 +80,20 @@ static void bench_alloc(int argc, char **argv) {
   };
 
 #define M(name) fn_bench_##name();
-  if (mode_str == "ALL") {
-    M(stl)
-    M(fast_bin)
-  } else if (mode_str == "STL") {
-    M(stl)
-  } else if (mode_str == "FAST_BIN") {
-    M(fast_bin)
-  }
+  bench::FuncMap data = {
+      {"ALL",
+       [&] {
+         M(stl)
+         M(fast_bin)
+       }},
+      {"STL", [&] { M(stl) }},
+      {"FAST_BIN", [&] { M(fast_bin) }},
+  };
 #undef M
+
+  bench::ExecFuncMap(data, mode_str);
 }
 
-} // namespace bench
+} // namespace
 
-FUNC_FACTORY_REGISTER("ALLOC", bench::bench_alloc)
+FUNC_FACTORY_REGISTER("ALLOC", bench_alloc)
