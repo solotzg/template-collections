@@ -8,7 +8,6 @@ from inner_utils import *
 REPO_DIR = os.path.realpath(os.path.join(
     os.path.join(__file__, os.pardir), os.pardir))
 
-SCRIPT_DIR = os.path.realpath(os.path.join(__file__, os.pardir))
 
 logger.setLevel(logging.INFO)
 
@@ -26,6 +25,10 @@ def main():
                         help='ignore files with suffix, split by space')
     parser.add_argument(
         '--diff_from', help='commit hash/branch to check git diff', default='HEAD')
+    parser.add_argument(
+        '--cmake-format', help='binary path of `cmake-format`', default='cmake-format')
+    parser.add_argument(
+        '--clang-format', help='binary path of `clang-format`', default='clang-format')
 
     args = parser.parse_args()
     suffix_to_format = [e for e in args.suffix.strip().split(
@@ -62,9 +65,9 @@ def main():
             '\n  '.join(files_to_format)))
         for file in files_to_format:
             if any([file.endswith(e) for e in cmake_file_suffix]):
-                cmd = '{}/cmake-format -i {}'.format(SCRIPT_DIR, file)
+                cmd = '{} -i {}'.format(args.cmake_format, file)
             else:
-                cmd = '{}/clang-format -i {}'.format(SCRIPT_DIR, file)
+                cmd = '{} -i {}'.format(args.clang_format, file)
             out, err, ret = run_cmd(cmd)
             if ret:
                 logger.info(out)

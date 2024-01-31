@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+source $(dirname $0)/utils.sh
+
+CMAKE_FORMAT=${CMAKE_FORMAT:-"cmake-format"}
+CLANG_FORMAT=${CLANG_FORMAT:-"clang-format"}
+
+${SCRIPTPATH}/format.py --repo_path=${WORKSPACE_SRC_DIR} --cmake-format=${CMAKE_FORMAT} --clang-format=${CLANG_FORMAT}

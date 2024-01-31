@@ -7,7 +7,7 @@ NPROC=$(get_core_num)
 
 mkdir -p ${DEBUG_BUILD_PATH} && cd ${DEBUG_BUILD_PATH}
 
-CC=${CC} CXX=${CXX} cmake -S ${WORKSPACE_FOLDER} \
+CC=${CC} CXX=${CXX} cmake -S ${WORKSPACE_SRC_DIR} \
     -DCMAKE_BUILD_TYPE=DEBUG \
     -Wno-dev \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \

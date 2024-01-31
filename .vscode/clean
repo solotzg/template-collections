@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+source $(dirname $0)/utils.sh
+
+set -x
+
+rm -rf ${DEBUG_BUILD_PATH}
+rm -rf ${RELEASE_BUILD_PATH}

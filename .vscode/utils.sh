@@ -21,10 +21,10 @@ function get_core_num() {
 
 export -f get_core_num
 
-NAME=CppTest
-WORKSPACE_FOLDER=${SRCPATH}
-DEBUG_BUILD_PATH=${WORKSPACE_FOLDER}/cmake-build-debug
-RELEASE_BUILD_PATH=${WORKSPACE_FOLDER}/cmake-build-release
+NAME=${NAME:-CppTest}
+WORKSPACE_SRC_DIR=${WORKSPACE_SRC_DIR:-${SRCPATH}}
+DEBUG_BUILD_PATH=${DEBUG_BUILD_PATH:-${WORKSPACE_SRC_DIR}/cmake-build-debug}
+RELEASE_BUILD_PATH=${RELEASE_BUILD_PATH:-${WORKSPACE_SRC_DIR}/cmake-build-release}
 CC=${CC:-clang}
 CXX=${CXX:-clang++}
 ENABLE_PCH=${ENABLE_PCH:-ON}

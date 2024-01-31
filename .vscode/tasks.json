@@ -63,12 +63,10 @@
         {
             "label": "tidy",
             "type": "shell",
-            "command": "python3",
+            "command": "${workspaceFolder}/.vscode/recompile-debug",
             "args": [
-                "${workspaceFolder}/.vscode/recompile.py",
                 "--file=${file}",
                 "--type=tidy",
-                "--work-dir=${workspaceFolder}/cmake-build-debug",
                 "--clang-tidy-path=clang-tidy"
             ],
             "problemMatcher": []
@@ -76,48 +74,40 @@
         {
             "label": "recompile",
             "type": "shell",
-            "command": "python3",
+            "command": "${workspaceFolder}/.vscode/recompile-debug",
             "args": [
-                "${workspaceFolder}/.vscode/recompile.py",
                 "--file=${file}",
                 "--type=build",
-                "--work-dir=${workspaceFolder}/cmake-build-debug"
             ],
             "problemMatcher": []
         },
         {
             "label": "release_recompile",
             "type": "shell",
-            "command": "python3",
+            "command": "${workspaceFolder}/.vscode/recompile-release",
             "args": [
-                "${workspaceFolder}/.vscode/recompile.py",
                 "--file=${file}",
                 "--type=build",
-                "--work-dir=${workspaceFolder}/cmake-build-release"
             ],
             "problemMatcher": []
         },
         {
             "label": "release_objdump",
             "type": "shell",
-            "command": "python3",
+            "command": "${workspaceFolder}/.vscode/recompile-release",
             "args": [
-                "${workspaceFolder}/.vscode/recompile.py",
                 "--file=${file}",
                 "--type=objdump",
-                "--work-dir=${workspaceFolder}/cmake-build-release"
             ],
             "problemMatcher": []
         },
         {
             "label": "debug_objdump",
             "type": "shell",
-            "command": "python3",
+            "command": "${workspaceFolder}/.vscode/recompile-debug",
             "args": [
-                "${workspaceFolder}/.vscode/recompile.py",
                 "--file=${file}",
                 "--type=objdump",
-                "--work-dir=${workspaceFolder}/cmake-build-debug"
             ],
             "problemMatcher": []
         },
@@ -142,12 +132,10 @@
         {
             "label": "force_release_recompile",
             "type": "shell",
-            "command": "python3",
+            "command": "${workspaceFolder}/.vscode/recompile-debug",
             "args": [
-                "${workspaceFolder}/.vscode/recompile.py",
                 "--file=${file}",
                 "--type=build",
-                "--work-dir=${workspaceFolder}/cmake-build-debug",
                 "--release"
             ],
             "problemMatcher": []
@@ -164,62 +152,52 @@
         {
             "label": "check_syntax",
             "type": "shell",
-            "command": "python3",
+            "command": "${workspaceFolder}/.vscode/recompile-debug",
             "args": [
-                "${workspaceFolder}/.vscode/recompile.py",
                 "--file=${file}",
                 "--type=build",
                 "--syntax",
-                "--work-dir=${workspaceFolder}/cmake-build-debug"
             ],
             "problemMatcher": []
         },
         {
             "label": "preprocess",
             "type": "shell",
-            "command": "python3",
+            "command": "${workspaceFolder}/.vscode/recompile-debug",
             "args": [
-                "${workspaceFolder}/.vscode/recompile.py",
                 "--file=${file}",
                 "--type=build",
                 "--preprocess",
-                "--work-dir=${workspaceFolder}/cmake-build-debug"
             ],
             "problemMatcher": []
         },
         {
             "label": "release_emmit_llvm",
             "type": "shell",
-            "command": "python3",
+            "command": "${workspaceFolder}/.vscode/recompile-release",
             "args": [
-                "${workspaceFolder}/.vscode/recompile.py",
                 "--file=${file}",
                 "--type=build",
                 "--emmit-llvm",
-                "--work-dir=${workspaceFolder}/cmake-build-release"
             ],
             "problemMatcher": []
         },
         {
             "label": "debug_emmit_llvm",
             "type": "shell",
-            "command": "python3",
+            "command": "${workspaceFolder}/.vscode/recompile-debug",
             "args": [
-                "${workspaceFolder}/.vscode/recompile.py",
                 "--file=${file}",
                 "--type=build",
                 "--emmit-llvm",
-                "--work-dir=${workspaceFolder}/cmake-build-debug"
             ],
             "problemMatcher": []
         },
         {
             "label": "iwyu",
             "type": "shell",
-            "command": "iwyu_tool.py",
+            "command": "${workspaceFolder}/.vscode/iwyu",
             "args": [
-                "-p",
-                "${workspaceFolder}/cmake-build-debug",
                 "${file}"
             ],
             "problemMatcher": []
@@ -227,16 +205,13 @@
         {
             "label": "fmt",
             "type": "shell",
-            "command": "python3",
-            "args": [
-                "${workspaceFolder}/.vscode/format.py"
-            ],
+            "command": "${workspaceFolder}/.vscode/fmt",
             "problemMatcher": []
         },
         {
             "label": "clean",
             "type": "shell",
-            "command": "rm -rf ${workspaceFolder}/cmake-build-*",
+            "command": "${workspaceFolder}/.vscode/clean",
             "problemMatcher": []
         },
     ]

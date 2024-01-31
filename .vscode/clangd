@@ -4,13 +4,8 @@ SCRIPTPATH="$(
     cd "$(dirname "$0")"
     pwd -P
 )"
-SRCPATH=$(
-    cd ${SCRIPTPATH}/..
-    pwd -P
-)
-if [ -f ${SCRIPTPATH}/_env.sh ]; then
-    source ${SCRIPTPATH}/_env.sh
-fi
+
+source ${SCRIPTPATH}/utils.sh
 
 CLANGD=${CLANGD:-clangd}
-"${CLANGD}" $@
+"${CLANGD}" --compile-commands-dir=${DEBUG_BUILD_PATH} $@

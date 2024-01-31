@@ -16,7 +16,7 @@
             "name": "DebugTests",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/./cmake-build-debug/tests/tests",
+            "program": "${workspaceFolder}/cmake-build-debug/tests/tests",
             "args": [
                 "all"
             ],

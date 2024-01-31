@@ -7,7 +7,7 @@ NPROC=$(get_core_num)
 
 mkdir -p ${RELEASE_BUILD_PATH} && cd ${RELEASE_BUILD_PATH}
 
-CC=${CC} CXX=${CXX} cmake -S ${WORKSPACE_FOLDER} \
+CC=${CC} CXX=${CXX} cmake -S ${WORKSPACE_SRC_DIR} \
     -DCMAKE_BUILD_TYPE=RELWITHDEBINFO \
     -Wno-dev \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
