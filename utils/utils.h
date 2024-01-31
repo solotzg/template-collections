@@ -28,7 +28,7 @@ struct BasicConfig {
 };
 template <typename Base, size_t alignment> struct AlignedStruct {
   template <typename... Args>
-  AlignedStruct(Args &&...args) : base_{std::forward<Args>(args)...} {}
+  AlignedStruct(Args &&...args) : base_(std::forward<Args>(args)...) {}
 
   Base &base() { return base_; }
   const Base &base() const { return base_; }

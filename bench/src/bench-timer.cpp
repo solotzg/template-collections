@@ -90,6 +90,29 @@ static void bench_timer(int argc, char **argv) {
     LOG_INFO("using stl clock");
     bench_stl_clock(cnt);
   };
+  auto &&fn_bench_timer_yield = [] {
+    constexpr size_t n = 1e6;
+    LOG_INFO("running yield");
+    auto start = std::chrono::high_resolution_clock::now();
+    {
+      rp(i, n) { std::this_thread::yield(); }
+    }
+    auto elapsed = std::chrono::high_resolution_clock::now() - start;
+
+    bench::ShowDurAvgAndOps(elapsed, n);
+  };
+  auto &&fn_bench_timer_notifer = [] {
+    constexpr size_t n = 1e7;
+    LOG_INFO("running notifer");
+    std::atomic_flag f;
+    auto start = std::chrono::high_resolution_clock::now();
+    {
+      rp(i, n) utils::NO_INLINE_FUNC([&] { f.notify_one(); });
+    }
+    auto elapsed = std::chrono::high_resolution_clock::now() - start;
+
+    bench::ShowDurAvgAndOps(elapsed, n);
+  };
 
 #define M(name) fn_bench_timer_##name();
   bench::FuncMap data = {
@@ -99,11 +122,15 @@ static void bench_timer(int argc, char **argv) {
          M(stl)
          M(task)
          M(wheel_task)
+         M(yield)
+         M(notifer)
        }},
       {"ASYNC", [&] { M(async) }},
       {"STL", [&] { M(stl) }},
       {"TASK", [&] { M(task) }},
       {"WHEEL", [&] { M(wheel_task) }},
+      {"YIELD", [&] { M(yield) }},
+      {"NOTIFER", [&] { M(notifer) }},
   };
 #undef M
 

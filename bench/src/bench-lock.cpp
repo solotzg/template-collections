@@ -2,7 +2,13 @@
 
 namespace {
 
-NO_INLINE static void inc(uint64_t &x) { x += 1; }
+void inc(uint64_t &x) { x += 1; }
+void inc(std::atomic<uint64_t> &x) {
+  x.fetch_add(1, std::memory_order_acq_rel);
+}
+void exchg(utils::AtomicNotifier &notifer) {
+  notifer.WaitAndExchangeAwake(true);
+}
 
 struct TestLockNone {
   template <typename F> inline auto RunWithLock(F &&f) const { return f(); }
@@ -12,7 +18,7 @@ template <typename LockType>
 static void bench_lock_impl(const size_t n, const size_t parallel,
                             std::string_view name) {
   LockType lock{};
-  uint64_t x{};
+  utils::CPUCacheLineAligned<uint64_t> x;
 
   const auto label = fmt::format("{} concurrency={}", name, parallel);
 
@@ -33,9 +39,8 @@ static void bench_lock_impl(const size_t n, const size_t parallel,
         }
         waiter.Wait();
       }
-      rp(j, n) {
-        lock.RunWithLock([&] { inc(x); });
-      }
+      rp(j, n)
+          utils::NO_INLINE_FUNC([&] { lock.RunWithLock([&] { inc(*x); }); });
       if (--tcnt == 0) {
         finish.WakeOne();
       }
@@ -55,12 +60,10 @@ static void bench_lock_impl(const size_t n, const size_t parallel,
   }
 
   if constexpr (std::is_same_v<TestLockNone, LockType>) {
-    if (parallel != 1)
-      RUNTIME_ASSERT_NE(expect_n, x);
-    else
-      RUNTIME_ASSERT_EQ(expect_n, x);
+    if (parallel == 1)
+      RUNTIME_ASSERT_EQ(expect_n, *x);
   } else {
-    RUNTIME_ASSERT_EQ(expect_n, x);
+    RUNTIME_ASSERT_EQ(expect_n, *x);
   }
 }
 
@@ -86,7 +89,7 @@ static void bench_exchange(const size_t n, const size_t parallel,
         }
         waiter.Wait();
       }
-      rp(j, n) { notifer.WaitAndExchangeAwake(true); }
+      rp(j, n) utils::NO_INLINE_FUNC([&] { exchg(notifer); });
       if (--tcnt == 0) {
         finish.WakeOne();
       }
@@ -108,7 +111,7 @@ static void bench_exchange(const size_t n, const size_t parallel,
 
 static void bench_fetch_add(const size_t n, const size_t parallel,
                             std::string_view name) {
-  std::atomic<uint64_t> x{};
+  utils::CPUCacheLineAligned<std::atomic<uint64_t>> x{};
 
   const auto label = fmt::format("{} concurrency={}", name, parallel);
 
@@ -129,7 +132,7 @@ static void bench_fetch_add(const size_t n, const size_t parallel,
         }
         waiter.Wait();
       }
-      rp(j, n) { x.fetch_add(1, std::memory_order_acq_rel); }
+      rp(j, n) utils::NO_INLINE_FUNC([&] { inc(*x); });
       if (--tcnt == 0) {
         finish.WakeOne();
       }
@@ -148,7 +151,7 @@ static void bench_fetch_add(const size_t n, const size_t parallel,
     bench::ShowDurAvgAndOps(dur, expect_n);
   }
 
-  RUNTIME_ASSERT_EQ(n * threads.size(), x.load());
+  RUNTIME_ASSERT_EQ(n * threads.size(), x->load());
 }
 
 struct TestMutexLock : utils::MutexLockWrap {

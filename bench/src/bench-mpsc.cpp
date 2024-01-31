@@ -313,8 +313,8 @@ static void bench_mpsc_spin_loop(std::string_view label, size_t producer_size,
   GEN_TIME_COST(time_cost, "{} producer={}", label, producer_size);
   waiter.WakeAll();
 
-  std::atomic_int64_t res = 0;
-  std::atomic_int64_t cnt = 0;
+  int64_t res = 0;
+  int64_t cnt = 0;
   const int64_t expect_res =
       producer_size * (producer_size - 1) / 2 * test_loop;
   for (;;) {
@@ -483,7 +483,7 @@ static void bench_spsc_raw(std::string_view label, size_t producer_size,
     waiter.Wait();
     rp(i, test_loop) {
       for (; !spsc_queue.Put(i);)
-        ;
+        YIELD_CURRENT_THREAD(1);
     }
   });
 
@@ -503,6 +503,7 @@ static void bench_spsc_raw(std::string_view label, size_t producer_size,
         res += *x;
         break;
       }
+      YIELD_CURRENT_THREAD(1);
     }
 
     if (++cnt >= test_loop) {

@@ -52,10 +52,8 @@ typedef int8_t I8;
 #define FLATTEN_INLINE_PURE static __attribute__((flatten, always_inline, pure))
 #define ALWAYS_INLINE static __attribute__((always_inline))
 #define NO_INLINE __attribute__((__noinline__))
-#define FMT_LOG_TIMEPOINT "[{:%Y-%m-%d %H:%M:%S}.{:03d}]"
-#define DEFAULT_FMT_LOG_TIMEPOINT "[0000-00-00 00:00:00.000]"
+#define FMT_TIMEPOINT_MICROSEC "{:%Y-%m-%d %T}"
 #define LOG_TIMEPOINT_SIZE 25
-#define LOG_TIMEPOINT_SPACE_HOLDER "                         "
 #define ALIGN_TO(addr, align)                                                  \
   reinterpret_cast<decltype(addr)>(U64(addr) / align * align)
 #define ALIGN_UP_TO(addr, align)                                               \

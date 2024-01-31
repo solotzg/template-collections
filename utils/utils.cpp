@@ -82,32 +82,28 @@ into_sec_remain_millisec(utils::SysMilliseconds time_point) {
 void SerializeTimepoint(char *data,
                         utils::SysMilliseconds &last_update_time_sec,
                         const utils::SysMilliseconds time_point_ms) {
-  constexpr const char *millisec_format = "{:03d}";
   constexpr size_t millisec_bytes = 3;
   constexpr U64 max_milliseconds = 1000;
   using DataType = std::array<char, millisec_bytes>;
-  using DataPtr = std::atomic<DataType *>;
-  static std::array<DataPtr, max_milliseconds> milliseconds_map{};
+  using DataMap = std::array<DataType, max_milliseconds>;
+  static const auto &&milliseconds_map = []() -> DataMap {
+    constexpr const char *millisec_format = "{:03d}";
+    DataMap map{};
+    rp(msec, max_milliseconds) {
+      fmt::format_to_n(map[msec].data(), millisec_bytes, millisec_format,
+                       U64(msec));
+    }
+    return map;
+  }();
   auto &&[time_point_sec, millisec] = into_sec_remain_millisec(time_point_ms);
   if (time_point_sec != last_update_time_sec) {
-    fmt::format_to(data, "[{:%Y-%m-%d %T}]", time_point_ms);
+    fmt::format_to(data, "[" FMT_TIMEPOINT_MICROSEC "]", time_point_ms);
     last_update_time_sec = time_point_sec;
     return;
   }
   {
-    auto ptr = milliseconds_map[millisec].load(std::memory_order_relaxed);
-    if (!ptr) {
-      auto *new_ptr = new DataType();
-      fmt::format_to_n(new_ptr->data(), millisec_bytes, millisec_format,
-                       millisec);
-      if (!milliseconds_map[millisec].compare_exchange_strong(ptr, new_ptr)) {
-        delete new_ptr;
-      } else {
-        ptr = new_ptr;
-      }
-    }
     std::memcpy(data + utils::kLogTimePointSize - millisec_bytes - 1,
-                ptr->data(), millisec_bytes);
+                milliseconds_map[millisec].data(), millisec_bytes);
   }
 }
 

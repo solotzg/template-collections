@@ -33,7 +33,12 @@ void run_raw_println(std::string_view msg) {
 }
 
 void run_async(utils::AsyncLogger *logger, std::string_view msg) {
+#ifdef NDEBUG
   ASYNC_LOG_INFO(logger, msg);
+#else
+  ASYNC_LOG_INFO(logger, "real-time=`" FMT_TIMEPOINT_MICROSEC "` msg={}",
+                 DEF_SYSTEM_CLOCK_NOW, msg);
+#endif
 }
 
 template <typename F>

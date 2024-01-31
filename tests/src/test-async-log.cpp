@@ -25,6 +25,17 @@ struct AsyncLoggerHelper {
   std::function<void(const char *, size_t)> writer_;
 };
 
+static void _test_async_log2() {
+  utils::SysMilliseconds system_time_point_ms(
+      utils::Milliseconds{1703430312189});
+  utils::SystemClock::time_point system_time_point(
+      utils::Microseconds{1703430312189990});
+  ASSERT_EQ("2023-12-24 15:05:12.189",
+            fmt::format(FMT_TIMEPOINT_MICROSEC, system_time_point_ms));
+  ASSERT_EQ("2023-12-24 15:05:12.189990",
+            fmt::format(FMT_TIMEPOINT_MICROSEC, system_time_point));
+}
+
 static void _test_async_log1() {
   std::stringstream ss;
 
@@ -46,7 +57,10 @@ static void _test_async_log1() {
   }
 }
 
-static void _test_async_log() { _test_async_log1(); }
+static void _test_async_log() {
+  _test_async_log1();
+  _test_async_log2();
+}
 
 } // namespace tests
 
