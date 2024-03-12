@@ -1,59 +1,78 @@
 struct SegmentTree {
-#define lr (root << 1)
-#define rr (lr | 1)
-#define lson l, m, lr
-#define rson m + 1, r, rr
-  typedef long long ll;
-  const static int N = 100005;
+  using Data = int32_t;
+  using QueryRes = int32_t;
+
+#define _MID __mid
+#define _LEFT __l
+#define _RIGHT __r
+#define _ROOT __root
+#define _ARGS int _LEFT, int _RIGHT, int _ROOT
+#define _GEN_MID int _MID = (_LEFT + _RIGHT) / 2;
+#define _LR (_ROOT << 1)
+#define _RR (_LR | 1)
+#define _LSON _LEFT, _MID, _LR
+#define _RSON (_MID + 1), _RIGHT, _RR
+#define _CUR _LEFT, _RIGHT, _ROOT
+
+  SegmentTree(size_t n) : da_(n, 0) {}
+  static SegmentTree NewFromMaxn(size_t maxn) {
+
+    return SegmentTree(std::pow(2, std::ceil(std::log2(maxn)) + 1));
+  }
+
+  void merge_up(_ARGS) {
+    if (_LEFT == _RIGHT)
+      return;
+    // TODO
+    // da_[_ROOT] = std::max(da_[_LR], da_[_RR]);
+  }
+
+  void update(int from, int to, _ARGS, Data val) {
+    if (from <= _LEFT && _RIGHT <= to) {
+      // TODO
+      // da_[_ROOT] = val;
+      return;
+    }
+    _GEN_MID
+    if (_MID >= from)
+      update(from, to, _LSON, val);
+    if (_MID < to)
+      update(from, to, _RSON, val);
+
+    merge_up(_CUR);
+  }
+
+  QueryRes query(int from, int to, _ARGS) {
+    if (from <= _LEFT && _RIGHT <= to) {
+      // TODO
+      // return da_[_ROOT];
+      return;
+    }
+
+    _GEN_MID
+
+    QueryRes ans{};
+    if (_MID >= from)
+      ans = std::max(query(from, to, _LSON), ans);
+    if (_MID < to)
+      ans = std::max(query(from, to, _RSON), ans);
+    return ans;
+  }
+
+#undef _MID
+#undef _LEFT
+#undef _RIGHT
+#undef _ROOT
+#undef _ARGS
+#undef _GEN_MID
+#undef _LR
+#undef _RR
+#undef _LSON
+#undef _RSON
+#undef _CUR
+
   /*
-      root from 1
-  */
-  struct Node {
-    // data
-  };
-  Node da[N * 4];
-  void build(int l, int r, int root) {
-    // do something
-    da[root] = Node();
-    if (l == r)
-      return;
-    int m = (l + r) / 2;
-    build(lson);
-    build(rson);
-  }
-  void merge_down(int l, int r, int root) {
-    if (l == r)
-      return;
-    // ...
-  }
-  void merge_up(int l, int r, int root) {
-    if (l == r)
-      return;
-    // ...
-  }
-  void update(int L, int R, int l, int r, int root) {
-    if (L <= l && r <= R) {
-      //
-      return;
-    }
-    merge_down(l, r, root);
-    int m = (l + r) / 2;
-    if (m >= L)
-      update(L, R, lson);
-    if (m < R)
-      update(L, R, rson);
-    merge_up(l, r, root);
-  }
-  void query(int L, int R, int l, int r, int root) {
-    if (L <= l && r <= R) {
-      //
-      return;
-    }
-    merge_down(l, r, root);
-    int m = (l + r) / 2;
-    if (m >= L)
-      query(L, R, lson);
-    if (m < R)
-      query(L, R, rson);
-  }
+        root from 1
+    */
+  std::vector<Data> da_;
 };
