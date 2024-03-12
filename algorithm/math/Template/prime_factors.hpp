@@ -3,9 +3,9 @@
 #include <utils/utils.h>
 
 template <typename T> struct Factor {
-  T num_;
-  size_t cnt_;
-  Factor(T num, size_t cnt) : num_(num), cnt_(cnt) {}
+  T num;
+  size_t cnt;
+  Factor(T _num, size_t _cnt) : num(_num), cnt(_cnt) {}
 };
 
 template <typename T> struct Factors : std::vector<Factor<T>> {
@@ -15,9 +15,9 @@ template <typename T> struct Factors : std::vector<Factor<T>> {
       f(val);
       return;
     }
-    for (int i = 0; i <= this->data()[pos].cnt_; ++i) {
+    for (int i = 0; i <= this->data()[pos].cnt; ++i) {
       dfs(pos + 1, val, std::move(f));
-      val *= this->data()[pos].num_;
+      val *= this->data()[pos].num;
     }
   }
 };
