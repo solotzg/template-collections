@@ -326,18 +326,7 @@ private:
   AtomicNotifier notifier_;
 };
 
-static uint32_t NextPow2(uint32_t v) {
-  ASSERT_GT(v, 0);
-  ASSERT_LE(v, 1u << 31);
-  v--;
-  v |= v >> 1;
-  v |= v >> 2;
-  v |= v >> 4;
-  v |= v >> 8;
-  v |= v >> 16;
-  v++;
-  return v;
-}
+template <typename T> static T NextPow2(T v) { return std::bit_ceil(v); }
 
 struct Waiter {
   void Wait() {
@@ -776,5 +765,18 @@ private:
 private:
   Object *ptr_{};
 };
+
+ALWAYS_INLINE
+uint64_t hardware_timestamp_counter() {
+#if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
+  return __builtin_ia32_rdtsc();
+#elif defined(__aarch64__)
+  uint64_t cval;
+  asm volatile("mrs %0, cntvct_el0" : "=r"(cval));
+  return cval;
+#else
+  static_assert(false);
+#endif
+}
 
 } // namespace utils

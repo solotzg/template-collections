@@ -33,7 +33,7 @@ template <typename T, typename UP> struct OperatorWithModulo {
       return res;
     }
   }
-  static inline void smul_mod(T &a, T b, T mod) { a = mul_mod(a, b, mod); }
+  static inline T &smul_mod(T &a, T b, T mod) { return a = mul_mod(a, b, mod); }
   static inline T add_mod(T a, T b, T mod) {
     assert(a < mod);
     assert(b < mod);
@@ -43,7 +43,7 @@ template <typename T, typename UP> struct OperatorWithModulo {
       return (a += b) >= mod ? a - mod : a;
   }
 
-  static inline void sadd_mod(T &a, T b, T mod) { a = add_mod(a, b, mod); }
+  static inline T &sadd_mod(T &a, T b, T mod) { return a = add_mod(a, b, mod); }
 
   static inline T pow_mod(T a, uint64_t b, T mod) {
     T r = 1, p = a;
@@ -83,15 +83,23 @@ template <typename T, typename UP, const T MOD = 1000000007>
 struct ModuloOperator : OperatorWithModulo<T, UP> {
   using Base = OperatorWithModulo<T, UP>;
   static inline T mul(T a, T b) { return Base::mul_mod(a, b, MOD); }
-  static inline void smul(T &a, T b) { return Base::smul_mod(a, b, MOD); }
+  static inline T &smul(T &a, T b) { return Base::smul_mod(a, b, MOD); }
   static inline T add(T a, T b) { return Base::add_mod(a, b, MOD); }
-  static inline void sadd(T &a, T b) { return Base::sadd_mod(a, b, MOD); }
+  static inline T &sadd(T &a, T b) { return Base::sadd_mod(a, b, MOD); }
   static inline T pow(T a, T b) { return Base::pow_mod(a, b, MOD); }
 };
 
-template <size_t N, int32_t MOD> struct Comb {
-  using T = int32_t;
-  void init() {
+struct DefaultModuloOperator {
+  template <typename T> static inline T mul(T a, T b) { return a * b; }
+  template <typename T> static inline T &smul(T &a, T b) { return a *= b; }
+  template <typename T> static inline T add(T a, T b) { return a + b; }
+  template <typename T> static inline T &sadd(T &a, T b) { return a += b; }
+};
+
+template <size_t N, I32 MOD> struct Comb {
+  using T = I32;
+
+  Comb() {
     rp(i, N) {
       comb_[i][0] = comb_[i][i] = 1;
       rep(j, 1, i) {
@@ -99,37 +107,49 @@ template <size_t N, int32_t MOD> struct Comb {
       }
     }
   }
-  T get_comb(int n, int k) {
-    assert(k <= n);
+
+  const T *operator[](size_t n) const {
     assert(n < N);
-    assert(k < N);
-    return comb_[n][k];
+    return comb_[n];
   }
 
   T comb_[N][N];
-  ModuloOperator<int32_t, int64_t, MOD> modulo_;
+  [[no_unique_address]] utils::ModuloOperator<I32, I64, MOD> modulo_;
 };
 
-template <size_t N> struct Factorial {
-  void init(int64_t mod) {
-    A[0] = RA[0] = 1;
-    rep(i, 1, N) A[i] = mul_mod(A[i - 1], i), RA[i] = pow(A[i], mod - 2);
+template <size_t N, I32 MOD> struct Factorial {
+  using T = I32;
+
+  Factorial() {
+    v_[0] = inv_[0] = 1;
+    rep(i, 1, N) { v_[i] = modulo_.mul(v_[i - 1], i); }
+    inv_[N - 1] = modulo_.pow(v_[N - 1], MOD - 2);
+    rev_repd(i, N - 2, 1) { inv_[i] = modulo_.mul(inv_[i + 1], i + 1); }
   }
-  int get_comb(int n, int k) {
+
+  T comb(size_t n, size_t k) const {
     assert(k <= n);
     assert(n < N);
     assert(k < N);
-    return mul_mod(A[n], mul_mod(RA[k], RA[n - k]));
+    return modulo_.mul(v_[n], modulo_.mul(inv_[k], inv_[n - k]));
   }
-  int A[N], RA[N];
+
+  T val(size_t n) const {
+    assert(n < N);
+    return v_[n];
+  }
+
+  T inv(size_t n) const {
+    assert(n < N);
+    return inv_[n];
+  }
+
+  T v_[N], inv_[N];
+  [[no_unique_address]] utils::ModuloOperator<I32, I64, MOD> modulo_;
 };
 
-template <typename T> struct is_str {
-  static constexpr bool value = false;
-};
-template <> struct is_str<std::string> {
-  static constexpr bool value = true;
-};
+template <typename T> struct is_str { static constexpr bool value = false; };
+template <> struct is_str<std::string> { static constexpr bool value = true; };
 template <> struct is_str<std::string_view> {
   static constexpr bool value = true;
 };

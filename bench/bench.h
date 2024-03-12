@@ -29,7 +29,8 @@ inline auto DurAvgAndOps(const utils::TimeCost::Clock::duration &dur,
   return std::make_pair(avg, ops);
 }
 
-void ShowDurAvgAndOps(const utils::TimeCost::Clock::duration &dur, U64 n);
+void ShowDurAvgAndOps(const utils::TimeCost::Clock::duration &dur, U64 n,
+                      U64 clock_counter = -1);
 
 using FuncMap = std::unordered_map<std::string, std::function<void()>>;
 

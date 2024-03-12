@@ -93,13 +93,26 @@ static void bench_timer(int argc, char **argv) {
   auto &&fn_bench_timer_yield = [] {
     constexpr size_t n = 1e6;
     LOG_INFO("running yield");
+#ifdef __linux__
+    {
+      constexpr size_t cpuid = 2;
+      cpu_set_t cpuset;
+      CPU_ZERO(&cpuset);
+      CPU_SET(cpuid, &cpuset);
+      if (!pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) {
+        LOG_INFO("bind thread to CPU {}", cpuid);
+      }
+    }
+#endif
     auto start = std::chrono::high_resolution_clock::now();
+    auto tsc = utils::hardware_timestamp_counter();
     {
       rp(i, n) { std::this_thread::yield(); }
     }
+    tsc = utils::hardware_timestamp_counter() - tsc;
     auto elapsed = std::chrono::high_resolution_clock::now() - start;
 
-    bench::ShowDurAvgAndOps(elapsed, n);
+    bench::ShowDurAvgAndOps(elapsed, n, tsc);
   };
   auto &&fn_bench_timer_notifer = [] {
     constexpr size_t n = 1e7;

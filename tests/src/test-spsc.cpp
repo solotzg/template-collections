@@ -7,8 +7,8 @@ using TestNode = TestNode<int>;
 
 static void _test_spsc_queue() {
   {
-    ASSERT_EQ(utils::NextPow2(1), 1);
-    ASSERT_EQ(utils::NextPow2(2), 2);
+    ASSERT_EQ(utils::NextPow2(1u), 1);
+    ASSERT_EQ(utils::NextPow2(2u), 2);
     for (uint32_t i = 3; i <= 4; ++i)
       ASSERT_EQ(utils::NextPow2(i), 4);
     for (uint32_t i = 5; i <= 8; ++i)

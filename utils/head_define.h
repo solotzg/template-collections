@@ -308,8 +308,6 @@ typedef int8_t I8;
 #ifdef NDEBUG
 #define DEBUG_SCOPE(...)
 #else
-#define DEBUG_SCOPE(...)                                                       \
-  do {                                                                         \
-    __VA_ARGS__;                                                               \
-  } while (false)
+#define DEBUG_SCOPE(...) [&]() { __VA_ARGS__; }()
 #endif
+#define DEBUG_FMSGLN(...) DEBUG_SCOPE({ FMSGLN(__VA_ARGS__); })

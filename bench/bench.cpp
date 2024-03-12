@@ -52,10 +52,15 @@ bool FuncFactory::Run(std::string_view n, int argc, char **argv) {
   return false;
 }
 
-void ShowDurAvgAndOps(const utils::TimeCost::Clock::duration &dur, U64 n) {
+void ShowDurAvgAndOps(const utils::TimeCost::Clock::duration &dur, U64 n,
+                      U64 clock_counter) {
   auto &&[avg, ops] = DurAvgAndOps(dur, double(n));
-  FMSGLN("    count: {}, avg: {}, ops: {:.3f}",
-         fmt::format(std::locale("en_US.UTF-8"), "{:L}", n), avg, ops);
+  std::string extra;
+  if (clock_counter != -1) {
+    extra = fmt::format(", avg-clock-count: {:.3f}", double(clock_counter) / n);
+  }
+  FMSGLN("    count: {}, avg: {}, ops: {:.3f}{}",
+         fmt::format(std::locale("en_US.UTF-8"), "{:L}", n), avg, ops, extra);
 }
 
 void ExecFuncMap(FuncMap &data, const std::string &fname) {
