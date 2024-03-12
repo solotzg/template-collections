@@ -172,6 +172,17 @@
             "problemMatcher": []
         },
         {
+            "label": "release_preprocess",
+            "type": "shell",
+            "command": "${workspaceFolder}/.vscode/recompile-release",
+            "args": [
+                "--file=${file}",
+                "--type=build",
+                "--preprocess",
+            ],
+            "problemMatcher": []
+        },
+        {
             "label": "release_emmit_llvm",
             "type": "shell",
             "command": "${workspaceFolder}/.vscode/recompile-release",
