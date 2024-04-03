@@ -14,9 +14,8 @@ struct SegmentTree {
 #define _RSON (_MID + 1), _RIGHT, _RR
 #define _CUR _LEFT, _RIGHT, _ROOT
 
-  SegmentTree(size_t n) : da_(n, 0) {}
+  SegmentTree(size_t n) : da_(n) {}
   static SegmentTree NewFromMaxn(size_t maxn) {
-
     return SegmentTree(std::pow(2, std::ceil(std::log2(maxn)) + 1));
   }
 
