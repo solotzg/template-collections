@@ -780,3 +780,7 @@ uint64_t hardware_timestamp_counter() {
 }
 
 } // namespace utils
+
+namespace tests {
+class __inner__;
+}

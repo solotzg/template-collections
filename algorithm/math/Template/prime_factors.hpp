@@ -160,6 +160,9 @@ struct PrimeHelper {
   using T = uint64_t;
   using Factors = Factors<T>;
   using FactorMap = FactorMap<T>;
+  using TypeIsPrime = std::vector<bool>;
+  using TypePrimes = std::vector<T>;
+  using TypePiSmall = std::vector<uint32_t>;
 
   PrimeHelper(const PrimeHelper &) = delete;
   PrimeHelper(PrimeHelper &&src) = default;
@@ -291,9 +294,11 @@ private:
     }
   }
 
+  friend class tests::__inner__;
+
 private:
   size_t max_len_;
-  std::vector<bool> is_prime_;
-  std::vector<T> primes_;
-  std::vector<uint32_t> pi_small_;
+  TypeIsPrime is_prime_;
+  TypePrimes primes_;
+  TypePiSmall pi_small_;
 };
