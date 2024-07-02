@@ -1,4 +1,5 @@
 #include <algorithm/data_structure/Template/matrix_operation.hpp>
+#include <algorithm/geometry/geometry_2d.hpp>
 #include <algorithm/math/Template/euler_function.hpp>
 #include <algorithm/math/Template/extended_euclidean.hpp>
 #include <algorithm/math/Template/prime_factors.hpp>
@@ -173,12 +174,28 @@ static void _test_matrix() {
 } // namespace tests
 
 namespace tests {
+static void _test_geometry_2d() {
+  ASSERT(geometry_2d::IsPointOnSeg({1, 1}, {{0, 0}, {2, 2}}));
+  ASSERT(geometry_2d::IsPointOnSeg({0, 0}, {{0, 0}, {2, 2}}));
+  ASSERT(geometry_2d::IsPointOnSeg({2, 2}, {{0, 0}, {2, 2}}));
+  ASSERT(!geometry_2d::IsPointOnSeg({3, 3}, {{0, 0}, {2, 2}}));
+  ASSERT(!geometry_2d::IsPointOnSeg({-1, -1}, {{0, 0}, {2, 2}}));
+
+  ASSERT(!geometry_2d::IsPointOnSeg({0, -1}, {{0, 0}, {0, 2}}));
+  ASSERT(!geometry_2d::IsPointOnSeg({0, 3}, {{0, 0}, {0, 2}}));
+  ASSERT(!geometry_2d::IsPointOnSeg({-1, 0}, {{0, 0}, {2, 0}}));
+  ASSERT(!geometry_2d::IsPointOnSeg({3, 0}, {{0, 0}, {2, 0}}));
+}
+} // namespace tests
+
+namespace tests {
 static void _test_algorithm() {
   _test_matrix();
   _test_miller_rabin();
   _test_euler_function();
   _test_extend_gcd();
   _test_prime_factors();
+  _test_geometry_2d();
 }
 } // namespace tests
 

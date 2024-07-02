@@ -4,7 +4,7 @@
 
 namespace geometry_2d {
 
-constexpr double eps = 1e-5;
+constexpr double eps = 1e-8;
 static const double PI = std::acos(-1.0);
 
 inline int sgn(double x) {
@@ -15,6 +15,8 @@ inline int sgn(double x) {
   else
     return 1;
 }
+
+inline int cmp(double x, double y) { return sgn(x - y); }
 
 struct Point;
 using Vec = Point;
@@ -196,8 +198,12 @@ inline double CalcArea(const Point *p, int n) {
 // Check whether the point on the line segment
 inline bool IsPointOnSeg(const Point &P, const Segment &seg) {
   return sgn((seg.s - P) ^ (seg.e - P)) == 0 &&
-         (((P.x - seg.s.x) * (P.x - seg.e.x) < 0) ||
-          ((P.y - seg.s.y) * (P.y - seg.e.y) < 0));
+         cmp(P.x, std::min(seg.s.x, seg.e.x)) >= 0 &&
+         cmp(P.x, std::max(seg.s.x, seg.e.x)) <= 0 &&
+         cmp(P.y, std::min(seg.s.y, seg.e.y)) >= 0 &&
+         cmp(P.y, std::max(seg.s.y, seg.e.y)) <= 0 &&
+         //
+         true;
 }
 
 // Determine whether the point is inside a convex polygon
